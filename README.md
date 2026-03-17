@@ -1,35 +1,49 @@
 # AI Sandbox Runner
 
-`sandbox-runner` 是一个面向 AI agent、IDE 插件、平台自动化任务的 Go runner。它的目标不是再造一个 shell，而是把一次 `prepare -> setup -> execute -> verify -> collect` 过程提升为稳定的 run 语义层，并输出结构化可观测数据、artifacts 和 replay。
+A Go-based runner for AI agents, IDE plugins, and platform automation workflows.
 
-Runner 可以独立运行，也可以挂在 Docker、Apple `container`、OrbStack、Dev Container CLI、Kubernetes 或 OpenSandbox 之上。上层看到的始终是同一套 run / phase / telemetry / artifact 模型，而不是某个 provider 的专有 API。
+`sandbox-runner` does not try to reinvent the shell. It elevates the full `prepare -> setup -> execute -> verify -> collect` lifecycle into a stable run semantic layer with structured observability, artifacts, and replay.
 
-## 设计目标
+It can run standalone or sit on top of Docker, Apple `container`, OrbStack, Dev Container CLI, Kubernetes, or OpenSandbox. To upper layers, the model remains the same: a unified run / phase / telemetry / artifact contract instead of a provider-specific API surface.
 
-- 为 AI agent 服务：适合 patch、setup、test、verify、retry、自修复这类自动化闭环。
-- 主要聚焦可观测性：重点是 run timeline、phase 状态、stdout/stderr、OTel、artifacts、replay，而不是把 sandbox 本身做成业务控制面。
-- 统一 run 语义：切换 `direct`、`docker`、`devcontainer`、`k8s`、`opensandbox` 时，尽量不改变 CLI、输出 schema 和结果状态含义。
-- runtime/profile 分层：`kata`、`apple-container`、`orbstack-*` 是 runtime/profile 或 provider 扩展，不是新的 run engine。
-- 跨平台运行：Runner 自身支持 macOS、Linux、Windows 二进制；能力根据 OS / Arch / 是否容器内 / 是否 K8s / Linux capabilities 自动裁剪。
+## Why This Project
 
-## 适用场景
+AI-driven execution loops need more than process spawning. They need:
 
-- 本地 direct 调试：开发者或 AI agent 在本机直接跑 `go test`、`pytest`、`npm test`、`mvn test`，保留完整 run 级观测。
-- 本地 Docker 调试：需要更接近 Linux 容器依赖、网络和文件系统语义时，把 workload 放进容器执行。
-- 本地 Apple `container` 调试：在 Apple Silicon macOS 上用轻量 VM 容器执行 workload，同时保留统一 run artifacts 和 telemetry。
-- 本地 OrbStack 调试：把 OrbStack 当作 Docker provider、Linux machine backend 或本地 K8s target，用于更接近 Linux/STG 的本地验证。
-- 本地 Dev Container 调试：项目已经有 `.devcontainer/devcontainer.json`，希望在统一开发容器内执行 patch/test/verify。
-- STG / Linux sandbox 验证：在 K8s Job、远端 Linux 或受控 sandbox 中执行真实 patch/test/build/verify。
-- OpenSandbox 集成：平台已经接入 OpenSandbox，希望保留 Runner 语义，同时复用 provider lifecycle / exec / files / endpoints。
-- Kata 隔离增强：需要把 `k8s` 或 `opensandbox` 的运行时提升到 `kata`，但不改变上层 run / phase / command model。
+- predictable run semantics
+- phase-aware state transitions
+- structured stdout / stderr capture
+- artifacts and replay for debugging and audit
+- backend portability without changing the upper-layer contract
 
-## 非目标
+`AI Sandbox Runner` is designed for exactly that.
 
-- Runner 不是安全边界；强隔离只在 Docker/K8s/Linux sandbox 场景承诺。
-- 不在业务代码里直接耦合 provider DTO 或 provider client。
-- 不承诺 “本地 Mac/Windows + 零注入 + 完整 Linux 内核级观测”。
+## Design Goals
 
-## 核心架构
+- **Built for AI agents.** Suitable for patch, setup, test, verify, retry, and self-healing execution loops.
+- **Observability-first.** Focus on run timeline, phase status, stdout / stderr, OTel, artifacts, and replay rather than turning the sandbox itself into a business control plane.
+- **Unified run semantics.** Switching between `direct`, `docker`, `devcontainer`, `k8s`, and `opensandbox` should not materially change the CLI, output schema, or result semantics.
+- **Clear runtime/profile layering.** `kata`, `apple-container`, and `orbstack-*` are runtime profile or provider extensions, not new run engines.
+- **Cross-platform operation.** The runner itself supports macOS, Linux, and Windows binaries, while capability gates are trimmed automatically based on OS / Arch / container context / K8s context / Linux capabilities.
+
+## Typical Use Cases
+
+- **Local direct debugging** for developers or AI agents running `go test`, `pytest`, `npm test`, or `mvn test` directly on the host with full run-level observability.
+- **Local Docker debugging** when workload execution needs Linux container dependencies, networking behavior, or filesystem semantics.
+- **Local Apple `container` debugging** on Apple Silicon macOS using lightweight VM containers while preserving the same run artifacts and telemetry model.
+- **Local OrbStack debugging** using OrbStack as a Docker provider, Linux machine backend, or local K8s target for Linux-like validation.
+- **Local Dev Container debugging** for projects that already ship with `.devcontainer/devcontainer.json` and want a unified patch / test / verify workflow.
+- **STG / Linux sandbox validation** in K8s Jobs, remote Linux environments, or controlled sandboxes for real patch / build / verify execution.
+- **OpenSandbox integration** for platforms that already use OpenSandbox but want to keep the Runner semantic layer.
+- **Kata-enhanced isolation** for `k8s` or `opensandbox` workloads without changing the upper-layer run / phase / command model.
+
+## Non-Goals
+
+- The Runner is **not** the security boundary. Strong isolation is only guaranteed in Docker / K8s / Linux sandbox scenarios.
+- Business code should **not** couple directly to provider DTOs or provider clients.
+- The project does **not** claim full Linux kernel-level observability on local macOS or Windows with zero injection.
+
+## Architecture
 
 ```text
 AI Agent / IDE / CLI
@@ -56,104 +70,172 @@ RuntimeProfile
    └─ orbstack-machine
 ```
 
-分层职责：
+### Layer Responsibilities
 
-- RunEngine：run 生命周期、attempt、phase orchestration、状态汇总、artifacts / replay 输出。
-- PhaseEngine：`prepare -> setup -> execute -> verify -> collect` 的动作排序和状态推进。
-- BackendProvider：create/start/delete、exec、stream logs、upload/download、pause/resume/renew。
-- RuntimeProfile：只表达执行环境的隔离强度和 runtime 元数据，不改变 command model。
-- Telemetry / Artifact：输出 OTLP traces / metrics / logs，以及本地 JSONL / JSON artifacts。
+- **RunEngine**: owns run lifecycle, attempt control, phase orchestration, status aggregation, and artifacts / replay output.
+- **PhaseEngine**: drives the ordered lifecycle of `prepare -> setup -> execute -> verify -> collect`.
+- **BackendProvider**: handles create / start / delete, exec, log streaming, upload / download, and pause / resume / renew operations.
+- **RuntimeProfile**: describes isolation strength and runtime metadata without changing the command model.
+- **Telemetry / Artifact**: emits OTLP traces / metrics / logs as well as local JSONL / JSON artifacts.
 
-## 支持能力
+## Core Capabilities
 
-- 五阶段状态机：`prepare -> setup -> execute -> verify -> collect`
-- 运行模式：`local_direct`、`local_docker`、`local_devcontainer`、`local_apple_container`、`local_orbstack_machine`、`stg_linux`、`local_opensandbox_docker`、`stg_opensandbox_k8s`
-- runtime profile：`native`、`kata`、`apple-container`、`orbstack-docker`、`orbstack-k8s`、`orbstack-machine`
-- 语言适配：Go / Python / Node / Java / Shell
-- 结构化输出：`context.json`、`environment.json`、`setup.plan.json`、`phases.json`、`results.json`、`replay.json`
-- backend/runtime 输出：`provider.json`、`backend-profile.json`、`sandbox.json`、`runtime.json`
-- backend 专用输出：`devcontainer.json`、`machine.json`、`container.json`
-- devcontainer 输出：`devcontainer.json`
-- 命令日志：`commands.jsonl`、`stdout.jsonl`、`stderr.jsonl`
-- OTel：traces / metrics / logs；collector 不可用时可降级到本地 JSONL
-- Provider 扩展：OpenSandbox provider、K8s Job 渲染 / 提交 SDK、Dev Container CLI backend、Apple `container` backend、OrbStack Docker/K8s provider profile、OrbStack machine backend
-- Go 支持：Layer A run 级观测、Layer C helper 包、Linux/STG 条件下的 Layer B 能力开关
+- Five-phase state machine: `prepare -> setup -> execute -> verify -> collect`
+- Execution modes:
+  - `local_direct`
+  - `local_docker`
+  - `local_devcontainer`
+  - `local_apple_container`
+  - `local_orbstack_machine`
+  - `stg_linux`
+  - `local_opensandbox_docker`
+  - `stg_opensandbox_k8s`
+- Runtime profiles:
+  - `native`
+  - `kata`
+  - `apple-container`
+  - `orbstack-docker`
+  - `orbstack-k8s`
+  - `orbstack-machine`
+- Language adapters: Go / Python / Node / Java / Shell
+- Structured outputs:
+  - `context.json`
+  - `environment.json`
+  - `setup.plan.json`
+  - `phases.json`
+  - `results.json`
+  - `replay.json`
+- Backend/runtime outputs:
+  - `provider.json`
+  - `backend-profile.json`
+  - `sandbox.json`
+  - `runtime.json`
+- Backend-specific outputs:
+  - `devcontainer.json`
+  - `machine.json`
+  - `container.json`
+- Command logs:
+  - `commands.jsonl`
+  - `stdout.jsonl`
+  - `stderr.jsonl`
+- OTel traces / metrics / logs with fallback to local JSONL when the collector is unavailable
+- Extensible provider support for OpenSandbox, K8s Job rendering / submit SDK, Dev Container CLI backend, Apple `container`, and OrbStack profiles / backends
+- Go support across run-level observability, helper packages, and Linux/STG-gated advanced capabilities
 
-## 模式矩阵
+## Mode Matrix
 
-| 模式 | backend.kind | runtime.profile | 适用场景 | 说明 |
+| Mode | backend.kind | runtime.profile | Best For | Notes |
 |---|---|---|---|---|
-| `local_direct` | `direct` | `native` | 本机快速调试 | 不依赖容器，保留完整 run 级观测 |
-| `local_docker` | `docker` | `native` | 本地贴近 Linux | 支持 `host-runner` / `in-container-runner` |
-| `local_docker` | `docker` | `orbstack-docker` | macOS + OrbStack Docker | 复用 Docker backend，provider 标记为 `orbstack` |
-| `local_devcontainer` | `devcontainer` | `native` | 本地开发容器 | 驱动 `read-configuration` / `up` / `exec` / `down` |
-| `local_apple_container` | `apple-container` | `apple-container` | Apple Silicon 本地 VM 容器 | Apple `container` 单独作为 backend |
-| `local_orbstack_machine` | `orbstack-machine` | `orbstack-machine` | macOS 本地 Linux machine | 适合接近 STG 的完整 Linux 用户态 |
-| `stg_linux` | `k8s` | `native` / `kata` | STG / K8s / Linux sandbox | `kata` 时写入 `runtimeClassName` |
-| `stg_linux` | `k8s` | `orbstack-k8s` | OrbStack 本地单节点 K8s | 复用 K8s backend，provider 标记为 `orbstack` |
-| `local_opensandbox_docker` | `opensandbox` | `native` | 本地 OpenSandbox | 使用 provider lifecycle 和 execd API |
-| `stg_opensandbox_k8s` | `opensandbox` | `native` / `kata` | STG OpenSandbox | `kata` 作为 runtime request 透传给 provider |
+| `local_direct` | `direct` | `native` | Fast host-side debugging | No container required; full run-level observability |
+| `local_docker` | `docker` | `native` | Local Linux-like execution | Supports both `host-runner` and `in-container-runner` |
+| `local_docker` | `docker` | `orbstack-docker` | macOS + OrbStack Docker | Reuses Docker backend with `orbstack` provider markers |
+| `local_devcontainer` | `devcontainer` | `native` | Standardized developer container workflows | Drives `read-configuration` / `up` / `exec` / `down` |
+| `local_apple_container` | `apple-container` | `apple-container` | Apple Silicon local VM containers | Apple `container` as a dedicated backend |
+| `local_orbstack_machine` | `orbstack-machine` | `orbstack-machine` | Full Linux userspace on macOS | Good for validation close to STG |
+| `stg_linux` | `k8s` | `native` / `kata` | STG / K8s / Linux sandbox | Writes `runtimeClassName` when `kata` is enabled |
+| `stg_linux` | `k8s` | `orbstack-k8s` | OrbStack local single-node K8s | Reuses K8s backend with `orbstack` provider markers |
+| `local_opensandbox_docker` | `opensandbox` | `native` | Local OpenSandbox workflows | Uses provider lifecycle and execd APIs |
+| `stg_opensandbox_k8s` | `opensandbox` | `native` / `kata` | STG OpenSandbox execution | Passes `kata` runtime requests through provider metadata |
 
-## 可观测性与产物
+## Observability and Artifacts
 
-Runner 的主要价值是把一次 AI agent 执行过程变成可回放、可归因、可上传的结构化 run。
+The primary value of the Runner is that it turns an AI-agent execution workflow into a structured, replayable, attributable run.
 
-核心输出包括：
+Key outputs include:
 
-- run timeline 与 phase status
+- run timeline and phase status
 - command execution records
-- stdout / stderr line-level structured logs
-- OTel spans / events / metrics
-- 本地 artifacts 与 replay manifest
-- backend/runtime snapshots：`provider.json`、`backend-profile.json`、`sandbox.json`、`runtime.json`
-- backend 细分信息：Apple `container` 写 `container.json`，OrbStack machine 写 `machine.json`
-- Dev Container resolved summary：`devcontainer.json`
+- line-level structured stdout / stderr logs
+- OTel spans, events, and metrics
+- local artifacts and replay manifests
+- backend/runtime snapshots through `provider.json`, `backend-profile.json`, `sandbox.json`, and `runtime.json`
+- backend-specific details such as `container.json`, `machine.json`, and `devcontainer.json`
 
-## 平台与 Feature Gates
+## Apple Container and OrbStack
 
-Runner 启动后会根据运行环境自动决定 feature gates，不把 Linux 专属能力硬套到 macOS 或 Windows。
+These integrations do not change the run semantic layer. They only replace or extend the execution substrate.
 
-规则摘要：
+- **Apple `container`** acts as an independent backend for local Linux container workloads on Apple Silicon.
+- **OrbStack Docker** is not a new backend. It is a provider profile on top of `docker`, with `backend.kind=docker` unchanged and `runtime.profile=orbstack-docker`.
+- **OrbStack Machine** is an independent backend for fuller Linux machine workloads on macOS. It adds `machine.json` and `machine.name` telemetry metadata.
+- **OrbStack K8s** is not a new backend. It is a provider profile on top of `k8s`, with `runtime.profile=orbstack-k8s`.
 
-- `macOS` 默认关闭 `obi_ebpf`
-- `windows` 默认关闭 `obi_ebpf`
-- `windows` 默认关闭 `go_autosdk_bridge`
-- `linux` 非特权进程默认关闭 `obi_ebpf`
-- `local_direct` 默认不启用依赖特权或内核探针的能力
-- `local_devcontainer` 默认不启用依赖特权或内核探针的能力
-- `local_apple_container` 默认不启用依赖特权或内核探针的能力
-- `local_orbstack_machine` 默认不启用依赖特权或内核探针的能力
-- `docker(provider=orbstack)` / `k8s(provider=orbstack-local)` 只改变 provider，不放宽 Linux-only feature gate
-- `stg_linux` 可按策略启用 `obi_ebpf`、`go_autosdk_bridge`
-- `runtime.profile=kata` 只允许 `k8s` / `opensandbox`
+### Recommended Defaults
 
-## Go 支持矩阵
+- Prefer `apple-container` for lightweight VM containers on Apple Silicon.
+- Prefer `orbstack-machine` when a fuller Linux userspace is required.
+- Prefer `docker(provider=orbstack)` for standard Docker / Compose-oriented workflows.
+- Prefer `k8s(provider=orbstack-local)` for local single-node K8s validation.
+
+## Dev Container CLI and Kata
+
+- When `backend.kind=devcontainer`, the Runner maps the backend lifecycle to `devcontainer read-configuration`, `devcontainer up`, `devcontainer exec`, and `devcontainer down`.
+- `devcontainer exec` reuses the existing command model, stdout / stderr streaming pipeline, timeout handling, and artifact chain instead of introducing a second execution protocol.
+- `provider.json` carries the devcontainer summary, while `devcontainer.json` stores the resolved summary rather than a raw copy of the source file.
+- When `runtime.profile=kata`, the Runner performs runtime negotiation in the `prepare` phase and writes runtime metadata into `runtime.json`, `sandbox.json`, and OTel attributes.
+- `k8s + kata` writes `spec.runtimeClassName` into Job / Pod templates.
+- `opensandbox + kata` passes `runtime.profile` / `runtime.class` through provider metadata.
+- The first release does **not** support:
+  - `direct + kata`
+  - `docker + kata`
+  - `devcontainer + kata`
+  - `opensandbox + devcontainer`
+- If the `devcontainer` CLI is not available in the current shell `PATH`, configure `devcontainer.cli_path` explicitly.
+
+## Platform Rules and Feature Gates
+
+The Runner trims capabilities automatically based on platform and execution context instead of forcing Linux-specific functionality onto macOS or Windows.
+
+### Rules Summary
+
+- `macOS` disables `obi_ebpf` by default
+- `windows` disables `obi_ebpf` by default
+- `windows` disables `go_autosdk_bridge` by default
+- unprivileged `linux` disables `obi_ebpf` by default
+- `local_direct` does not enable capabilities that depend on privileged access or kernel probes
+- `local_devcontainer` does not enable capabilities that depend on privileged access or kernel probes
+- `local_apple_container` does not enable capabilities that depend on privileged access or kernel probes
+- `local_orbstack_machine` does not enable capabilities that depend on privileged access or kernel probes
+- `docker(provider=orbstack)` and `k8s(provider=orbstack-local)` change the provider only; they do not relax Linux-only gates
+- `stg_linux` may enable `obi_ebpf` and `go_autosdk_bridge` according to policy
+- `runtime.profile=kata` is only valid with `k8s` or `opensandbox`
+
+## Go Support Matrix
 
 | Capability | Mac Direct | Windows Direct | Mac Docker Host-Runner | Mac Docker In-Container | Linux Direct | STG/K8s Linux |
 |---|---|---|---|---|---|---|
 | Run lifecycle | Yes | Yes | Yes | Yes | Yes | Yes |
-| stdout/stderr/exit code | Yes | Yes | Yes | Yes | Yes | Yes |
+| stdout / stderr / exit code | Yes | Yes | Yes | Yes | Yes | Yes |
 | Artifact / Replay | Yes | Yes | Yes | Yes | Yes | Yes |
 | Go helper package | Yes | Yes | Yes | Yes | Yes | Yes |
 | Go Auto SDK bridge | No by default | No | No by default | Container-dependent | Optional | Optional |
 | OBI / eBPF | No | No | No | Permission-dependent | Optional | Optional |
 
-说明：
+### Notes
 
-- Mac / Windows 主要提供 Layer A run 级观测，不承诺 Linux 内核级增强能力。
-- Linux / STG 在满足权限与能力条件时，可以叠加 OBI / eBPF / Auto SDK bridge。
+- macOS and Windows primarily provide Layer A run-level observability and do not guarantee Linux kernel-level enhancements.
+- Linux and STG can layer in OBI / eBPF / Auto SDK bridge when permissions and runtime conditions allow.
 
+## OpenSandbox Compatibility
 
-示例配置：
+When `backend.kind=opensandbox`, the Runner preserves the same run / phase / artifact / replay model.
 
-- [run.sample.yaml](/Users/lotosli/Documents/Sandbox%20Runer/configs/run.sample.yaml)
-- [run.apple-container.sample.yaml](/Users/lotosli/Documents/Sandbox%20Runer/configs/run.apple-container.sample.yaml)
-- [run.devcontainer.sample.yaml](/Users/lotosli/Documents/Sandbox%20Runer/configs/run.devcontainer.sample.yaml)
-- [run.orbstack.docker.sample.yaml](/Users/lotosli/Documents/Sandbox%20Runer/configs/run.orbstack.docker.sample.yaml)
-- [run.orbstack.machine.sample.yaml](/Users/lotosli/Documents/Sandbox%20Runer/configs/run.orbstack.machine.sample.yaml)
-- [run.orbstack.k8s.sample.yaml](/Users/lotosli/Documents/Sandbox%20Runer/configs/run.orbstack.k8s.sample.yaml)
-- [run.opensandbox.sample.yaml](/Users/lotosli/Documents/Sandbox%20Runer/configs/run.opensandbox.sample.yaml)
-- [run.opensandbox.kata.sample.yaml](/Users/lotosli/Documents/Sandbox%20Runer/configs/run.opensandbox.kata.sample.yaml)
+- The `prepare` phase handles capability negotiation, sandbox create/start, and workspace tar sync-in.
+- The `execute` and `verify` phases run commands through the in-sandbox execd API while collecting stdout / stderr.
+- The `collect` phase emits `provider.json`, `sandbox.json`, and `endpoints.json`, then applies cleanup policy using `delete`, `pause`, or `keep`.
+- Provider failures are normalized into `RunnerError` while preserving provider-specific codes.
+- When `runtime.profile=kata`, runtime requests are passed through provider metadata and recorded in `runtime.json`.
+
+## Example Configs
+
+- `configs/run.sample.yaml`
+- `configs/run.apple-container.sample.yaml`
+- `configs/run.devcontainer.sample.yaml`
+- `configs/run.orbstack.docker.sample.yaml`
+- `configs/run.orbstack.machine.sample.yaml`
+- `configs/run.orbstack.k8s.sample.yaml`
+- `configs/run.opensandbox.sample.yaml`
+- `configs/run.opensandbox.kata.sample.yaml`
 
 ## Quick Start
 
@@ -171,7 +253,7 @@ make build
 ./sandbox-runner --version
 ```
 
-K8s / SDK 示例：
+### K8s / SDK Example
 
 ```bash
 ./sandbox-runner k8s render-job --config configs/run.sample.yaml --policy configs/policy.sample.yaml
@@ -185,7 +267,7 @@ make build
 make dist
 ```
 
-`make dist` 当前生成：
+`make dist` currently produces:
 
 - `dist/sandbox-runner-darwin-amd64`
 - `dist/sandbox-runner-darwin-arm64`
@@ -196,7 +278,7 @@ make dist
 - `dist/sandbox-runner-windows-arm64.exe`
 - `dist/SHA256SUMS`
 
-`--version` 输出包含：
+`--version` includes:
 
 - `version`
 - `git_sha`
@@ -214,19 +296,51 @@ go test ./tests/contract/...
 go test ./tests/integration/...
 ```
 
-说明：
+### Test Notes
 
-- DevContainer backend 的单元测试使用 fake CLI，不依赖本机真实 `devcontainer`。
-- DevContainer 端到端验证依赖本机 `devcontainer` CLI 和可用的 Docker daemon。
-- Apple `container` 真实联调只在 macOS arm64 + 已安装 `container` CLI 下执行。
-- OrbStack Docker / Machine / K8s 真实联调只在已安装 OrbStack 的 macOS 上执行。
-- OpenSandbox integration test 依赖本机 `opensandbox-server` 和可用的 Docker daemon。
-- 当前仓库的 integration test 在 Docker 不可用时会自动 skip；若本机 OpenSandbox 版本与当前 fixture schema 不一致，也会自动 skip。
+- DevContainer backend unit tests use a fake CLI and do not require a real local `devcontainer` installation.
+- End-to-end DevContainer validation requires a local `devcontainer` CLI and a working Docker daemon.
+- Apple `container` integration requires macOS arm64 with the `container` CLI installed.
+- OrbStack Docker / Machine / K8s integration requires OrbStack on macOS.
+- OpenSandbox integration tests require a local `opensandbox-server` and a working Docker daemon.
+- Integration tests are skipped automatically when Docker is unavailable, or when the local OpenSandbox version does not match the fixture schema.
 
+## Public Packages
 
-## 注意事项
+- `github.com/lotosli/sandbox-runner/pkg/sdk`
+- `github.com/lotosli/sandbox-runner/pkg/helper`
 
-- Runner 不是安全边界；文件系统 / 网络 / 内存硬隔离只在 Docker/K8s/Linux sandbox 场景承诺。
-- `collector.mode=require` 更适合 STG；`collector.mode=auto` 更适合本地开发。
-- S3 上传后端使用标准 AWS SDK v2 与 S3-compatible 配置。
-- 本地 OpenSandbox 联调前，请先确认 `opensandbox-server` 和 Docker daemon 可用。
+## Repository Layout
+
+```text
+cmd/sandbox-runner/
+internal/
+  adapter/
+  artifact/
+  backend/
+  cli/
+  collector/
+  config/
+  envsync/
+  executor/
+  kubernetes/
+  opensandbox/
+  phase/
+  platform/
+  policy/
+  proc/
+  telemetry/
+pkg/
+  helper/
+  sdk/
+configs/
+deployments/
+tests/
+```
+
+## Important Notes
+
+- The Runner is not the security boundary; hard isolation for filesystem / network / memory is only guaranteed in Docker / K8s / Linux sandbox scenarios.
+- `collector.mode=require` is better suited for STG, while `collector.mode=auto` is usually better for local development.
+- The S3 upload backend uses standard AWS SDK v2 and S3-compatible configuration.
+- Before local OpenSandbox validation, make sure `opensandbox-server` and Docker daemon are availab
