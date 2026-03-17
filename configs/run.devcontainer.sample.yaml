@@ -1,5 +1,5 @@
 run:
-  service_name: sandbox-runner-opensandbox-demo
+  service_name: sandbox-runner-devcontainer-demo
   mode: local
   run_id: ""
   attempt: 1
@@ -13,7 +13,6 @@ run:
     - test
     - ./...
   language: auto
-  image: golang:1.24-alpine
 
 phases:
   prepare:
@@ -53,7 +52,7 @@ artifacts:
   backend: local
 
 backend:
-  kind: opensandbox
+  kind: devcontainer
 
 runtime:
   profile: native
@@ -61,7 +60,7 @@ runtime:
 platform:
   target_os: auto
   target_arch: auto
-  run_mode: local_opensandbox_docker
+  run_mode: local_devcontainer
   container_execution_mode: host-runner
   feature_gates:
     go_basic_runner: true
@@ -69,18 +68,16 @@ platform:
     go_autosdk_bridge: false
     obi_ebpf: false
     k8s_operator_go_inject: false
-    local_docker_mode: true
+    local_docker_mode: false
     local_direct_mode: false
     stg_linux_mode: false
 
 sandbox:
-  image: golang:1.24-alpine
+  image: ""
   entrypoint:
     - /bin/sh
     - -lc
   env: {}
-  cpu: "2"
-  memory: 4Gi
 
 opensandbox:
   base_url: http://127.0.0.1:8080
@@ -97,12 +94,12 @@ opensandbox:
   download_strategy: tar
 
 provider:
-  prefer_opensandbox: true
+  prefer_opensandbox: false
   require_capabilities:
-    - file_upload
+    - devcontainer
     - stream_logs
   fallback_order:
-    - opensandbox
+    - devcontainer
     - docker
     - direct
 

@@ -6,7 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
+	"runtime"
 
 	"github.com/lotosli/sandbox-runner/internal/config"
 	"github.com/lotosli/sandbox-runner/internal/model"
@@ -29,12 +29,20 @@ type GlobalOptions struct {
 	PolicyPath string
 }
 
+var (
+	versionValue    = "dev"
+	gitSHAValue     = "unknown"
+	buildTimeValue  = "unknown"
+	buildTargetOS   = runtime.GOOS
+	buildTargetArch = runtime.GOARCH
+)
+
 var versionInfo = model.VersionInfo{
-	Version:    "dev",
-	GitSHA:     "unknown",
-	BuildTime:  "unknown",
-	TargetOS:   runtimeValue("unknown"),
-	TargetArch: runtimeValue("unknown"),
+	Version:    versionValue,
+	GitSHA:     gitSHAValue,
+	BuildTime:  buildTimeValue,
+	TargetOS:   buildTargetOS,
+	TargetArch: buildTargetArch,
 }
 
 func Parse(args []string) (App, error) {
@@ -103,7 +111,7 @@ func parseValidateCommand(args []string) *ValidateCommand {
 
 func parseReplayCommand(args []string) *ReplayCommand {
 	fs := flag.NewFlagSet("replay", flag.ContinueOnError)
-	artifactDir := fs.String("artifact-dir", ".sandbox-run", "Artifact dir")
+	artifactDir := fs.String("artifact-dir", ".sandbox-runner", "Artifact dir")
 	_ = fs.Parse(args)
 	return &ReplayCommand{ArtifactDir: *artifactDir}
 }
@@ -132,7 +140,7 @@ func parseK8sCommand(args []string) (App, error) {
 func parseK8sRenderCommand(args []string) *K8sRenderCommand {
 	fs := flag.NewFlagSet("k8s render-job", flag.ContinueOnError)
 	opts := GlobalOptions{}
-	namespace := fs.String("namespace", "ai-sandbox-runs", "Kubernetes namespace")
+	namespace := fs.String("namespace", "ai-sandbox-runner-runs", "Kubernetes namespace")
 	fs.StringVar(&opts.ConfigPath, "config", "", "Path to run config")
 	fs.StringVar(&opts.PolicyPath, "policy", "", "Path to policy config")
 	_ = fs.Parse(args)
@@ -142,12 +150,13 @@ func parseK8sRenderCommand(args []string) *K8sRenderCommand {
 func parseK8sSubmitCommand(args []string) *K8sSubmitCommand {
 	fs := flag.NewFlagSet("k8s submit-job", flag.ContinueOnError)
 	opts := GlobalOptions{}
-	namespace := fs.String("namespace", "ai-sandbox-runs", "Kubernetes namespace")
+	namespace := fs.String("namespace", "ai-sandbox-runner-runs", "Kubernetes namespace")
 	kubeconfig := fs.String("kubeconfig", "", "Kubeconfig path")
+	kubeContext := fs.String("context", "", "Kubernetes context")
 	fs.StringVar(&opts.ConfigPath, "config", "", "Path to run config")
 	fs.StringVar(&opts.PolicyPath, "policy", "", "Path to policy config")
 	_ = fs.Parse(args)
-	return &K8sSubmitCommand{Opts: opts, Namespace: *namespace, Kubeconfig: *kubeconfig}
+	return &K8sSubmitCommand{Opts: opts, Namespace: *namespace, Kubeconfig: *kubeconfig, KubeContext: *kubeContext}
 }
 
 func loadRequest(opts GlobalOptions) (model.RunRequest, error) {
@@ -178,11 +187,4 @@ func withCommand(cfg model.RunConfig, args []string) model.RunConfig {
 func printYAMLPlaceholder(value any) error {
 	_, err := fmt.Fprintf(os.Stdout, "%v\n", value)
 	return err
-}
-
-func runtimeValue(fallback string) string {
-	if value := strings.TrimSpace(os.Getenv("SANDBOX_RUNNER_RUNTIME_HINT")); value != "" {
-		return value
-	}
-	return fallback
 }

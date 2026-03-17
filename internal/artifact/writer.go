@@ -13,19 +13,24 @@ import (
 )
 
 const (
-	ContextFileName     = "context.json"
-	EnvironmentFileName = "environment.json"
-	SetupPlanFileName   = "setup.plan.json"
-	PhasesFileName      = "phases.json"
-	CommandsFileName    = "commands.jsonl"
-	StdoutFileName      = "stdout.jsonl"
-	StderrFileName      = "stderr.jsonl"
-	ResultsFileName     = "results.json"
-	ReplayFileName      = "replay.json"
-	ArtifactsDirName    = "artifacts"
-	ProviderFileName    = "provider.json"
-	SandboxFileName     = "sandbox.json"
-	EndpointsFileName   = "endpoints.json"
+	ContextFileName        = "context.json"
+	EnvironmentFileName    = "environment.json"
+	SetupPlanFileName      = "setup.plan.json"
+	PhasesFileName         = "phases.json"
+	CommandsFileName       = "commands.jsonl"
+	StdoutFileName         = "stdout.jsonl"
+	StderrFileName         = "stderr.jsonl"
+	ResultsFileName        = "results.json"
+	ReplayFileName         = "replay.json"
+	ArtifactsDirName       = "artifacts"
+	ProviderFileName       = "provider.json"
+	BackendProfileFileName = "backend-profile.json"
+	MachineFileName        = "machine.json"
+	ContainerFileName      = "container.json"
+	SandboxFileName        = "sandbox.json"
+	EndpointsFileName      = "endpoints.json"
+	RuntimeFileName        = "runtime.json"
+	DevContainerFileName   = "devcontainer.json"
 )
 
 type Writer struct {
@@ -124,12 +129,32 @@ func (w *Writer) WriteProvider(value model.ProviderArtifact) error {
 	return w.WriteJSON(ProviderFileName, value)
 }
 
+func (w *Writer) WriteBackendProfile(value model.BackendProfileArtifact) error {
+	return w.WriteJSON(BackendProfileFileName, value)
+}
+
+func (w *Writer) WriteMachine(value model.MachineArtifact) error {
+	return w.WriteJSON(MachineFileName, value)
+}
+
+func (w *Writer) WriteContainer(value model.ContainerArtifact) error {
+	return w.WriteJSON(ContainerFileName, value)
+}
+
 func (w *Writer) WriteSandbox(value model.SandboxArtifact) error {
 	return w.WriteJSON(SandboxFileName, value)
 }
 
 func (w *Writer) WriteEndpoints(value model.EndpointsArtifact) error {
 	return w.WriteJSON(EndpointsFileName, value)
+}
+
+func (w *Writer) WriteRuntime(value model.RuntimeArtifact) error {
+	return w.WriteJSON(RuntimeFileName, value)
+}
+
+func (w *Writer) WriteDevContainer(value model.DevContainerArtifact) error {
+	return w.WriteJSON(DevContainerFileName, value)
 }
 
 func (w *Writer) AppendCommand(value any) error {

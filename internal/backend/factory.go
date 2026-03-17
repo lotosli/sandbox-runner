@@ -9,11 +9,17 @@ import (
 func New(runCfg model.RunConfig) (SandboxBackend, error) {
 	switch runCfg.Backend.Kind {
 	case model.BackendKindDirect:
-		return NewLocalBackend(model.BackendKindDirect), nil
+		return NewLocalBackend(model.BackendKindDirect, runCfg), nil
 	case model.BackendKindDocker:
-		return NewLocalBackend(model.BackendKindDocker), nil
+		return NewLocalBackend(model.BackendKindDocker, runCfg), nil
+	case model.BackendKindDevContainer:
+		return NewDevContainerBackend(runCfg)
+	case model.BackendKindAppleContainer:
+		return NewAppleContainerBackend(runCfg)
+	case model.BackendKindOrbStackMachine:
+		return NewOrbStackMachineBackend(runCfg)
 	case model.BackendKindK8s:
-		return NewLocalBackend(model.BackendKindK8s), nil
+		return NewLocalBackend(model.BackendKindK8s, runCfg), nil
 	case model.BackendKindOpenSandbox:
 		return NewOpenSandboxBackend(runCfg), nil
 	default:

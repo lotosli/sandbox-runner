@@ -110,12 +110,10 @@ func (e Engine) EnforceCapabilities(phase model.Phase) error {
 
 func (e Engine) checkPath(path string, allow []string) error {
 	cleaned := filepath.Clean(path)
-	if e.runCfg.Platform.RunMode == model.RunModeLocalDirect {
-		workspace := filepath.Clean(e.runCfg.Run.WorkspaceDir)
-		artifactDir := filepath.Clean(e.runCfg.Run.ArtifactDir)
-		if strings.HasPrefix(cleaned, workspace) || strings.HasPrefix(cleaned, artifactDir) {
-			return nil
-		}
+	workspace := filepath.Clean(e.runCfg.Run.WorkspaceDir)
+	artifactDir := filepath.Clean(e.runCfg.Run.ArtifactDir)
+	if strings.HasPrefix(cleaned, workspace) || strings.HasPrefix(cleaned, artifactDir) {
+		return nil
 	}
 	for _, denied := range e.cfg.Filesystem.Deny {
 		if strings.HasPrefix(cleaned, filepath.Clean(denied)) {

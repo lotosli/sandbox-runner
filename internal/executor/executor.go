@@ -42,7 +42,8 @@ type Executor interface {
 }
 
 func New(runCfg model.RunConfig, target model.ExecutionTarget, backendImpl backend.SandboxBackend) (Executor, error) {
-	if runCfg.Backend.Kind == model.BackendKindOpenSandbox {
+	switch runCfg.Backend.Kind {
+	case model.BackendKindOpenSandbox, model.BackendKindDevContainer, model.BackendKindAppleContainer, model.BackendKindOrbStackMachine:
 		return NewBackendExecutor(runCfg, target, backendImpl)
 	}
 	if runCfg.Platform.RunMode == model.RunModeLocalDocker {

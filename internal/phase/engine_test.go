@@ -14,7 +14,7 @@ func TestEngineRunLocalDirect(t *testing.T) {
 	workspace := t.TempDir()
 	runCfg := config.DefaultRunConfig()
 	runCfg.Run.WorkspaceDir = workspace
-	runCfg.Run.ArtifactDir = filepath.Join(workspace, ".sandbox-run")
+	runCfg.Run.ArtifactDir = filepath.Join(workspace, ".sandbox-runner")
 	runCfg.Run.Command = []string{"sh", "-lc", "echo hello"}
 	runCfg.Collector.Mode = model.CollectorModeSkip
 	runCfg.Phases.Setup.Enabled = false

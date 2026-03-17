@@ -17,7 +17,7 @@ run:
   attempt: 1
   sandbox_id: local
   workspace_dir: .
-  artifact_dir: .sandbox-run
+  artifact_dir: .sandbox-runner
   language: auto
   image: alpine:3.20
 platform:

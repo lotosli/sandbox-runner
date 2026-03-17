@@ -5,7 +5,7 @@ filesystem:
   write_allow:
     - /workspace
     - /tmp
-    - /workspace/.sandbox-run
+    - /workspace/.sandbox-runner
   deny:
     - /root/.ssh
     - /workspace/.env

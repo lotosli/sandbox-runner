@@ -21,11 +21,16 @@ type client struct {
 	cs *kubernetes.Clientset
 }
 
-func NewClient(kubeconfig string) (Client, error) {
+func NewClient(kubeconfig, contextName string) (Client, error) {
 	cfg, err := rest.InClusterConfig()
-	if err != nil {
+	if err != nil || kubeconfig != "" || contextName != "" {
 		path := platform.KubeconfigPath(kubeconfig)
-		cfg, err = clientcmd.BuildConfigFromFlags("", path)
+		loadingRules := &clientcmd.ClientConfigLoadingRules{ExplicitPath: path}
+		overrides := &clientcmd.ConfigOverrides{}
+		if contextName != "" {
+			overrides.CurrentContext = contextName
+		}
+		cfg, err = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides).ClientConfig()
 		if err != nil {
 			return nil, fmt.Errorf("build kube config: %w", err)
 		}

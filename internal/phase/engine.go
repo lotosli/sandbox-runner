@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/lotosli/sandbox-runner/internal/adapter"
@@ -35,23 +36,25 @@ func NewEngine() Engine {
 }
 
 type runState struct {
-	req             *model.RunRequest
-	writer          *artifact.Writer
-	uploader        artifact.Uploader
-	emitter         *telemetry.Emitter
-	executor        executor.Executor
-	backend         backend.SandboxBackend
-	backendCaps     model.BackendCapabilities
-	sandboxInfo     backend.SandboxInfo
-	policy          policy.Engine
-	collectorResult collector.BootstrapResult
-	phaseResults    []model.PhaseResult
-	result          *model.RunResult
-	setupPlan       model.SetupPlan
-	environment     model.EnvironmentFingerprint
-	commandClass    string
-	target          model.ExecutionTarget
-	runCtx          context.Context
+	req              *model.RunRequest
+	writer           *artifact.Writer
+	uploader         artifact.Uploader
+	emitter          *telemetry.Emitter
+	executor         executor.Executor
+	backend          backend.SandboxBackend
+	backendCaps      model.BackendCapabilities
+	runtimeInfo      model.RuntimeInfo
+	sandboxInfo      backend.SandboxInfo
+	devcontainerInfo *model.DevContainerArtifact
+	policy           policy.Engine
+	collectorResult  collector.BootstrapResult
+	phaseResults     []model.PhaseResult
+	result           *model.RunResult
+	setupPlan        model.SetupPlan
+	environment      model.EnvironmentFingerprint
+	commandClass     string
+	target           model.ExecutionTarget
+	runCtx           context.Context
 }
 
 func (e Engine) Run(ctx context.Context, req *model.RunRequest) (*model.RunResult, error) {
@@ -123,11 +126,19 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 
 	state.target = platform.Detect(cfg.Platform.RunMode)
 	state.target.BackendKind = string(cfg.Backend.Kind)
+	state.target.ProviderName = providerNameForConfig(cfg)
+	state.target.BackendProvider = backendProviderForConfig(cfg)
+	state.target.RuntimeProfile = string(cfg.Runtime.Profile)
+	state.target.RuntimeClassName = cfg.Kata.RuntimeClassName
+	state.target.Virtualization = virtualizationForRuntime(cfg.Runtime.Profile)
+	state.target.RuntimeKind = runtimeKindForConfig(cfg)
+	state.target.LocalPlatform = localPlatformForConfig(cfg)
+	state.target.ContainerImage = sandboxImage(cfg)
 	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
-		state.target.ProviderName = "opensandbox"
-		state.target.RuntimeKind = string(cfg.OpenSandbox.Runtime)
 		state.target.NetworkMode = cfg.OpenSandbox.NetworkMode
-		state.target.ContainerImage = cfg.Sandbox.Image
+	}
+	if cfg.Backend.Kind == model.BackendKindOrbStackMachine {
+		state.target.MachineName = cfg.OrbStack.MachineName
 	}
 	features, warnings, err := platform.ResolveFeatures(cfg, state.target)
 	if err != nil {
@@ -184,19 +195,72 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 	}
 	state.backendCaps = caps
 	state.result.BackendKind = string(cfg.Backend.Kind)
-	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
-		state.result.ProviderName = "opensandbox"
-		state.result.SandboxImage = cfg.Sandbox.Image
+	state.result.ProviderName = providerNameForConfig(cfg)
+	state.result.BackendProvider = backendProviderForConfig(cfg)
+	state.result.SandboxImage = sandboxImage(cfg)
+	runtimeInfo, err := backendImpl.RuntimeInfo(phaseCtx)
+	if err != nil {
+		return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeSandboxUnsupportedCapability, err)
 	}
+	state.runtimeInfo = runtimeInfo
+	state.result.RuntimeProfile = runtimeInfo.RuntimeProfile
+	state.result.RuntimeClassName = runtimeInfo.RuntimeClassName
+	state.result.BackendProvider = firstNonEmpty(runtimeInfo.BackendProvider, state.result.BackendProvider)
+	state.result.MachineName = firstNonEmpty(runtimeInfo.MachineName, cfg.OrbStack.MachineName)
+	state.target.RuntimeProfile = runtimeInfo.RuntimeProfile
+	state.target.RuntimeClassName = runtimeInfo.RuntimeClassName
+	if runtimeInfo.Virtualization != "" {
+		state.target.Virtualization = runtimeInfo.Virtualization
+	}
+	state.target.BackendProvider = firstNonEmpty(runtimeInfo.BackendProvider, state.target.BackendProvider)
+	state.target.LocalPlatform = firstNonEmpty(runtimeInfo.LocalPlatform, state.target.LocalPlatform)
+	state.target.MachineName = firstNonEmpty(runtimeInfo.MachineName, state.target.MachineName)
+	state.target.ContainerID = firstNonEmpty(runtimeInfo.ContainerID, state.target.ContainerID)
 	state.result.Metadata["backend"] = backendSnapshot(cfg, caps)
+	state.result.Metadata["runtime"] = runtimeArtifact(cfg, runtimeInfo)
+	_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{
+		Name:  "runtime.profile.selected",
+		Phase: model.PhasePrepare,
+		At:    time.Now().UTC(),
+		Attributes: map[string]string{
+			"sandbox.runtime.profile": runtimeInfo.RuntimeProfile,
+			"sandbox.runtime.class":   runtimeInfo.RuntimeClassName,
+			"sandbox.virtualization":  runtimeInfo.Virtualization,
+		},
+	})
+	if cfg.Runtime.Profile == model.RuntimeProfileKata {
+		_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{Name: "kata.preflight.start", Phase: model.PhasePrepare, At: time.Now().UTC()})
+		if err := e.ensureRuntimeProfileSupport(cfg, caps); err != nil {
+			return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeProviderRuntimeUnsupported, err)
+		}
+		_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{
+			Name:  "kata.preflight.end",
+			Phase: model.PhasePrepare,
+			At:    time.Now().UTC(),
+			Attributes: map[string]string{
+				"checked_by": runtimeInfo.CheckedBy,
+				"detail":     runtimeInfo.Detail,
+			},
+		})
+	}
 
 	if err := e.ensureRequiredCapabilities(cfg, caps); err != nil {
 		return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeSandboxUnsupportedCapability, err)
 	}
 
-	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
+	if requiresManagedSandbox(cfg) {
+		startEvent, endEvent := "sandbox.create.start", "sandbox.create.end"
+		if cfg.Backend.Kind == model.BackendKindDevContainer {
+			_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{Name: "devcontainer.read_configuration.start", Phase: model.PhasePrepare, At: time.Now().UTC()})
+			_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{Name: "devcontainer.up.start", Phase: model.PhasePrepare, At: time.Now().UTC()})
+			startEvent, endEvent = "devcontainer.up.start", "devcontainer.up.end"
+		} else if cfg.Backend.Kind == model.BackendKindAppleContainer {
+			startEvent, endEvent = "container.create.start", "container.create.end"
+		} else if cfg.Backend.Kind == model.BackendKindOrbStackMachine {
+			startEvent, endEvent = "machine.create.start", "machine.create.end"
+		}
 		_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{
-			Name:  "sandbox.create.start",
+			Name:  startEvent,
 			Phase: model.PhasePrepare,
 			At:    time.Now().UTC(),
 		})
@@ -208,20 +272,37 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 		cfg.Run.SandboxID = info.ID
 		req.RunConfig = cfg
 		state.target.ContainerID = info.ID
+		if cfg.Backend.Kind == model.BackendKindOrbStackMachine {
+			state.target.ContainerID = ""
+			state.target.MachineName = info.ID
+			state.result.MachineName = info.ID
+		}
 
 		_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{
-			Name:  "sandbox.create.end",
+			Name:  endEvent,
 			Phase: model.PhasePrepare,
 			At:    time.Now().UTC(),
 			Attributes: map[string]string{
 				"sandbox.id": info.ID,
 			},
 		})
+		if cfg.Backend.Kind == model.BackendKindDevContainer {
+			_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{
+				Name:       "devcontainer.read_configuration.end",
+				Phase:      model.PhasePrepare,
+				At:         time.Now().UTC(),
+				Attributes: map[string]string{"sandbox.id": info.ID},
+			})
+		}
 		if err := backendImpl.Start(phaseCtx, info.ID); err != nil {
 			return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeSandboxStartFailed, err)
 		}
+		startedEvent := "sandbox.start"
+		if cfg.Backend.Kind == model.BackendKindOrbStackMachine {
+			startedEvent = "machine.start"
+		}
 		_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{
-			Name:  "sandbox.start",
+			Name:  startedEvent,
 			Phase: model.PhasePrepare,
 			At:    time.Now().UTC(),
 			Attributes: map[string]string{
@@ -232,6 +313,25 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 			_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{Name: "workspace.sync_in", Phase: model.PhasePrepare, At: time.Now().UTC()})
 			if err := syncer.SyncWorkspaceIn(phaseCtx, info.ID, workspace); err != nil {
 				return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeSandboxUploadFailed, err)
+			}
+		}
+		if provider, ok := backendImpl.(backend.DevContainerMetadataProvider); ok {
+			devInfo, err := provider.DevContainerMetadata(phaseCtx, info.ID)
+			if err == nil {
+				state.devcontainerInfo = &devInfo
+				_ = state.writer.WriteDevContainer(devInfo)
+				if cfg.Backend.Kind == model.BackendKindDevContainer && devInfo.WorkspaceFolder != "" {
+					_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{
+						Name:  "devcontainer.run_user_commands.end",
+						Phase: model.PhasePrepare,
+						At:    time.Now().UTC(),
+						Attributes: map[string]string{
+							"devcontainer.workspace_folder": devInfo.WorkspaceFolder,
+						},
+					})
+				}
+			} else {
+				state.result.Metadata["devcontainer_metadata_error"] = err.Error()
 			}
 		}
 	}
@@ -254,11 +354,27 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 	if err := state.writer.WriteContext(contextArtifact); err != nil {
 		return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeConfigInvalid, err)
 	}
-	if err := state.writer.WriteProvider(providerArtifact(cfg, caps)); err != nil {
+	if err := state.writer.WriteProvider(providerArtifact(cfg, caps, state.devcontainerInfo)); err != nil {
+		return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeConfigInvalid, err)
+	}
+	if err := state.writer.WriteBackendProfile(backendProfileArtifact(cfg, runtimeInfo)); err != nil {
+		return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeConfigInvalid, err)
+	}
+	if err := state.writer.WriteRuntime(runtimeArtifact(cfg, runtimeInfo)); err != nil {
 		return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeConfigInvalid, err)
 	}
 	if snapshot := sandboxArtifact(state.sandboxInfo, cfg); snapshot.SandboxID != "" {
 		if err := state.writer.WriteSandbox(snapshot); err != nil {
+			return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeConfigInvalid, err)
+		}
+	}
+	if containerInfo := containerArtifact(state.sandboxInfo, cfg); containerInfo.ContainerID != "" {
+		if err := state.writer.WriteContainer(containerInfo); err != nil {
+			return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeConfigInvalid, err)
+		}
+	}
+	if machineInfo := machineArtifact(state.sandboxInfo, cfg); machineInfo.MachineName != "" {
+		if err := state.writer.WriteMachine(machineInfo); err != nil {
 			return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeConfigInvalid, err)
 		}
 	}
@@ -268,8 +384,10 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 	state.result.Status = model.StatusSucceeded
 	state.result.Phase = model.PhasePrepare
 	state.result.ExitCode = 0
-	state.phaseResults = append(state.phaseResults, successPhase(model.PhasePrepare, started, map[string]any{"warnings": warnings}))
-	_ = state.emitter.EndPhase(phaseCtx, model.PhasePrepare, state.phaseResults[len(state.phaseResults)-1])
+	prepareResult := successPhase(model.PhasePrepare, started, map[string]any{"warnings": warnings})
+	prepareResult.BackendAction = prepareActionForBackend(cfg)
+	state.phaseResults = append(state.phaseResults, prepareResult)
+	e.endPhase(state, phaseCtx, model.PhasePrepare, state.phaseResults[len(state.phaseResults)-1])
 	return nil
 }
 
@@ -329,8 +447,10 @@ func (e Engine) runSetup(ctx context.Context, state *runState) error {
 		}
 	}
 
-	state.phaseResults = append(state.phaseResults, successPhase(model.PhaseSetup, started, map[string]any{"project_type": plan.ProjectType}))
-	_ = state.emitter.EndPhase(phaseCtx, model.PhaseSetup, state.phaseResults[len(state.phaseResults)-1])
+	setupResult := successPhase(model.PhaseSetup, started, map[string]any{"project_type": plan.ProjectType})
+	setupResult.BackendAction = execActionForBackend(state.req.RunConfig)
+	state.phaseResults = append(state.phaseResults, setupResult)
+	e.endPhase(state, phaseCtx, model.PhaseSetup, state.phaseResults[len(state.phaseResults)-1])
 	return nil
 }
 
@@ -410,10 +530,12 @@ func (e Engine) runExecute(ctx context.Context, state *runState) error {
 		return e.failPhaseWithStatus(phaseCtx, state, model.PhaseExecute, started, code, commandError(command, result, execErr), status, result)
 	}
 
-	state.phaseResults = append(state.phaseResults, successPhaseWithExec(model.PhaseExecute, started, state.commandClass, result))
+	executeResult := successPhaseWithExec(model.PhaseExecute, started, state.commandClass, result)
+	executeResult.BackendAction = execActionForBackend(cfg)
+	state.phaseResults = append(state.phaseResults, executeResult)
 	state.result.Status = model.StatusSucceeded
 	state.result.Phase = model.PhaseExecute
-	_ = state.emitter.EndPhase(phaseCtx, model.PhaseExecute, state.phaseResults[len(state.phaseResults)-1])
+	e.endPhase(state, phaseCtx, model.PhaseExecute, state.phaseResults[len(state.phaseResults)-1])
 	return nil
 }
 
@@ -473,10 +595,14 @@ func (e Engine) runVerify(ctx context.Context, state *runState) error {
 		}
 	}
 
-	state.phaseResults = append(state.phaseResults, successPhase(model.PhaseVerify, started, nil))
+	verifyResult := successPhase(model.PhaseVerify, started, nil)
+	if len(cfg.Phases.Verify.SmokeCommand) > 0 {
+		verifyResult.BackendAction = execActionForBackend(cfg)
+	}
+	state.phaseResults = append(state.phaseResults, verifyResult)
 	state.result.Status = model.StatusSucceeded
 	state.result.Phase = model.PhaseVerify
-	_ = state.emitter.EndPhase(phaseCtx, model.PhaseVerify, state.phaseResults[len(state.phaseResults)-1])
+	e.endPhase(state, phaseCtx, model.PhaseVerify, state.phaseResults[len(state.phaseResults)-1])
 	return nil
 }
 
@@ -487,11 +613,11 @@ func (e Engine) runCollect(ctx context.Context, state *runState) error {
 	phaseCtx, started := e.startPhase(ctx, state, model.PhaseCollect)
 	cfg := state.req.RunConfig
 
-	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
+	if requiresManagedSandbox(cfg) {
 		if syncer, ok := state.backend.(backend.WorkspaceSyncer); ok && state.sandboxInfo.ID != "" {
 			_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{Name: "workspace.sync_out", Phase: model.PhaseCollect, At: time.Now().UTC()})
-			remoteDir := path.Join(cfg.OpenSandbox.WorkspaceRoot, filepath.Base(cfg.Run.ArtifactDir))
-			localDir := filepath.Join(cfg.Run.ArtifactDir, artifact.ArtifactsDirName, "opensandbox-workspace")
+			remoteDir := collectRemoteArtifactDir(cfg)
+			localDir := filepath.Join(cfg.Run.ArtifactDir, artifact.ArtifactsDirName, string(cfg.Backend.Kind)+"-workspace")
 			if err := syncer.SyncWorkspaceOut(phaseCtx, state.sandboxInfo.ID, remoteDir, localDir); err != nil {
 				state.result.Metadata["workspace_sync_out_error"] = err.Error()
 			}
@@ -501,14 +627,31 @@ func (e Engine) runCollect(ctx context.Context, state *runState) error {
 			if err == nil {
 				state.sandboxInfo = info
 				_ = state.writer.WriteSandbox(sandboxArtifact(info, cfg))
+				if containerInfo := containerArtifact(info, cfg); containerInfo.ContainerID != "" {
+					_ = state.writer.WriteContainer(containerInfo)
+				}
+				if machineInfo := machineArtifact(info, cfg); machineInfo.MachineName != "" {
+					_ = state.writer.WriteMachine(machineInfo)
+				}
 			} else {
 				state.result.Metadata["sandbox_metadata_error"] = err.Error()
 			}
-			endpoints, err := provider.Endpoints(phaseCtx, state.sandboxInfo.ID, []int{44772, 8080})
+			if cfg.Backend.Kind == model.BackendKindOpenSandbox {
+				endpoints, err := provider.Endpoints(phaseCtx, state.sandboxInfo.ID, []int{44772, 8080})
+				if err == nil {
+					_ = state.writer.WriteEndpoints(model.EndpointsArtifact{Ports: endpoints})
+				} else {
+					state.result.Metadata["sandbox_endpoints_error"] = err.Error()
+				}
+			}
+		}
+		if provider, ok := state.backend.(backend.DevContainerMetadataProvider); ok && state.sandboxInfo.ID != "" {
+			devInfo, err := provider.DevContainerMetadata(phaseCtx, state.sandboxInfo.ID)
 			if err == nil {
-				_ = state.writer.WriteEndpoints(model.EndpointsArtifact{Ports: endpoints})
+				state.devcontainerInfo = &devInfo
+				_ = state.writer.WriteDevContainer(devInfo)
 			} else {
-				state.result.Metadata["sandbox_endpoints_error"] = err.Error()
+				state.result.Metadata["devcontainer_metadata_error"] = err.Error()
 			}
 		}
 		if err := e.cleanupBackend(phaseCtx, state); err != nil {
@@ -553,7 +696,9 @@ func (e Engine) runCollect(ctx context.Context, state *runState) error {
 		return e.failPhase(phaseCtx, state, model.PhaseCollect, started, model.ErrorCodeCollectFailed, err)
 	}
 
-	state.phaseResults = append(state.phaseResults, successPhase(model.PhaseCollect, started, map[string]any{"artifacts": len(refs)}))
+	collectResult := successPhase(model.PhaseCollect, started, map[string]any{"artifacts": len(refs)})
+	collectResult.BackendAction = cleanupActionForBackend(cfg)
+	state.phaseResults = append(state.phaseResults, collectResult)
 	state.result.Phase = model.PhaseCollect
 	if state.result.Status == model.StatusCreated {
 		state.result.Status = model.StatusSucceeded
@@ -566,7 +711,7 @@ func (e Engine) runCollect(ctx context.Context, state *runState) error {
 	if err := state.writer.WriteResults(state.result); err != nil {
 		return e.failPhase(phaseCtx, state, model.PhaseCollect, started, model.ErrorCodeCollectFailed, err)
 	}
-	_ = state.emitter.EndPhase(phaseCtx, model.PhaseCollect, state.phaseResults[len(state.phaseResults)-1])
+	e.endPhase(state, phaseCtx, model.PhaseCollect, state.phaseResults[len(state.phaseResults)-1])
 	return uploadErr
 }
 
@@ -588,7 +733,14 @@ func (s *runState) baseCtx(fallback context.Context) context.Context {
 	return fallback
 }
 
+func (e Engine) endPhase(state *runState, ctx context.Context, phase model.Phase, result model.PhaseResult) {
+	if state.emitter != nil {
+		_ = state.emitter.EndPhase(ctx, phase, result)
+	}
+}
+
 func (e Engine) failWithoutArtifacts(state *runState, phase model.Phase, code model.ErrorCode, err error) error {
+	code = errorCodeForErr(code, err)
 	state.result.Status = model.StatusFailed
 	state.result.Phase = phase
 	state.result.ErrorCode = code
@@ -603,6 +755,7 @@ func (e Engine) failPhase(ctx context.Context, state *runState, phase model.Phas
 }
 
 func (e Engine) failPhaseWithStatus(ctx context.Context, state *runState, phase model.Phase, started time.Time, code model.ErrorCode, err error, status model.RunStatus, execResult executor.Result) error {
+	code = errorCodeForErr(code, err)
 	msg := ""
 	if err != nil {
 		msg = err.Error()
@@ -697,8 +850,9 @@ func (e Engine) recordCommand(ctx context.Context, state *runState, phase model.
 			Value: float64(result.Duration.Milliseconds()),
 			At:    time.Now().UTC(),
 			Attributes: map[string]string{
-				"phase":         string(phase),
-				"command_class": proc.ClassifyCommand(command),
+				"phase":                   string(phase),
+				"command_class":           proc.ClassifyCommand(command),
+				"sandbox.runtime.profile": state.runtimeInfo.RuntimeProfile,
 			},
 		})
 	}
@@ -742,20 +896,47 @@ func (e Engine) buildCreateSandboxRequest(cfg model.RunConfig) backend.CreateSan
 			env[key] = value
 		}
 	}
+	workspaceDir := cfg.Run.WorkspaceDir
+	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
+		workspaceDir = cfg.OpenSandbox.WorkspaceRoot
+	} else if cfg.Backend.Kind == model.BackendKindAppleContainer {
+		workspaceDir = cfg.Run.WorkspaceDir
+	} else if cfg.Backend.Kind == model.BackendKindOrbStackMachine {
+		workspaceDir = cfg.OrbStack.MachineWorkspaceRoot
+	}
 	return backend.CreateSandboxRequest{
-		RunID:        cfg.Run.RunID,
-		Attempt:      cfg.Run.Attempt,
-		WorkspaceID:  cfg.Run.WorkspaceID,
-		Image:        image,
-		Entrypoint:   cfg.Sandbox.Entrypoint,
-		Env:          env,
-		Metadata:     map[string]string{"run_id": cfg.Run.RunID, "attempt": fmt.Sprintf("%d", cfg.Run.Attempt)},
+		RunID:       cfg.Run.RunID,
+		Attempt:     cfg.Run.Attempt,
+		WorkspaceID: cfg.Run.WorkspaceID,
+		Image:       image,
+		Entrypoint:  cfg.Sandbox.Entrypoint,
+		Env:         env,
+		Metadata: map[string]string{
+			"run_id":           cfg.Run.RunID,
+			"attempt":          fmt.Sprintf("%d", cfg.Run.Attempt),
+			"runtime.profile":  string(cfg.Runtime.Profile),
+			"runtime.class":    cfg.Kata.RuntimeClassName,
+			"backend.kind":     string(cfg.Backend.Kind),
+			"backend.provider": backendProviderForConfig(cfg),
+			"local.platform":   localPlatformForConfig(cfg),
+		},
 		CPU:          cfg.Sandbox.CPU,
 		Memory:       cfg.Sandbox.Memory,
 		NetworkMode:  cfg.OpenSandbox.NetworkMode,
 		TimeoutSec:   maxInt(cfg.OpenSandbox.TTLSec, 1800),
-		WorkspaceDir: cfg.OpenSandbox.WorkspaceRoot,
+		WorkspaceDir: workspaceDir,
 	}
+}
+
+func (e Engine) ensureRuntimeProfileSupport(cfg model.RunConfig, caps model.BackendCapabilities) error {
+	if cfg.Runtime.Profile == model.RuntimeProfileKata && !caps.SupportsRuntimeProfile {
+		return model.RunnerError{
+			Code:        string(model.ErrorCodeProviderRuntimeUnsupported),
+			Message:     fmt.Sprintf("backend %s does not support runtime profile %s", cfg.Backend.Kind, cfg.Runtime.Profile),
+			BackendKind: string(cfg.Backend.Kind),
+		}
+	}
+	return nil
 }
 
 func (e Engine) ensureRequiredCapabilities(cfg model.RunConfig, caps model.BackendCapabilities) error {
@@ -789,6 +970,18 @@ func hasCapability(name string, caps model.BackendCapabilities) bool {
 		return caps.SupportsHostNetwork
 	case "code_interp":
 		return caps.SupportsCodeInterp
+	case "runtime_profile":
+		return caps.SupportsRuntimeProfile
+	case "devcontainer":
+		return caps.SupportsDevContainer
+	case "machine_exec":
+		return caps.SupportsMachineExec
+	case "oci_image":
+		return caps.SupportsOCIImage
+	case "vm_isolation":
+		return caps.SupportsVMIsolation
+	case "k8s_target":
+		return caps.SupportsK8sTarget
 	default:
 		return false
 	}
@@ -796,14 +989,27 @@ func hasCapability(name string, caps model.BackendCapabilities) bool {
 
 func backendSnapshot(cfg model.RunConfig, caps model.BackendCapabilities) *model.BackendSnapshot {
 	snapshot := &model.BackendSnapshot{
-		Kind:         string(cfg.Backend.Kind),
-		Provider:     string(cfg.Backend.Kind),
-		Capabilities: caps,
+		Kind:             string(cfg.Backend.Kind),
+		Provider:         providerNameForConfig(cfg),
+		BackendProvider:  backendProviderForConfig(cfg),
+		RuntimeProfile:   string(cfg.Runtime.Profile),
+		RuntimeClassName: cfg.Kata.RuntimeClassName,
+		Virtualization:   virtualizationForRuntime(cfg.Runtime.Profile),
+		LocalPlatform:    localPlatformForConfig(cfg),
+		Capabilities:     caps,
 	}
 	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
-		snapshot.Provider = "opensandbox"
 		snapshot.Runtime = string(cfg.OpenSandbox.Runtime)
 		snapshot.ServerURL = cfg.OpenSandbox.BaseURL
+	}
+	if cfg.Backend.Kind == model.BackendKindDevContainer {
+		snapshot.Runtime = "devcontainer"
+	}
+	if cfg.Backend.Kind == model.BackendKindAppleContainer {
+		snapshot.Runtime = "apple-container"
+	}
+	if cfg.Backend.Kind == model.BackendKindOrbStackMachine {
+		snapshot.Runtime = "orbstack-machine"
 	}
 	return snapshot
 }
@@ -817,18 +1023,26 @@ func sandboxSnapshot(info backend.SandboxInfo, cfg model.RunConfig) *model.Sandb
 		id = cfg.Run.SandboxID
 	}
 	return &model.SandboxSnapshot{
-		ID:          id,
-		Status:      info.Status,
-		NetworkMode: cfg.OpenSandbox.NetworkMode,
-		ExpiresAt:   info.ExpiresAt,
-		Metadata:    info.Metadata,
+		ID:               id,
+		Status:           info.Status,
+		NetworkMode:      cfg.OpenSandbox.NetworkMode,
+		RuntimeProfile:   string(cfg.Runtime.Profile),
+		RuntimeClassName: cfg.Kata.RuntimeClassName,
+		Virtualization:   virtualizationForRuntime(cfg.Runtime.Profile),
+		MachineName:      machineNameForSandbox(cfg, info),
+		ExpiresAt:        info.ExpiresAt,
+		Metadata:         info.Metadata,
 	}
 }
 
-func providerArtifact(cfg model.RunConfig, caps model.BackendCapabilities) model.ProviderArtifact {
+func providerArtifact(cfg model.RunConfig, caps model.BackendCapabilities, devInfo *model.DevContainerArtifact) model.ProviderArtifact {
 	artifact := model.ProviderArtifact{
 		BackendKind:         string(cfg.Backend.Kind),
-		ProviderName:        string(cfg.Backend.Kind),
+		ProviderName:        providerNameForConfig(cfg),
+		BackendProvider:     backendProviderForConfig(cfg),
+		RuntimeProfile:      string(cfg.Runtime.Profile),
+		RuntimeClassName:    cfg.Kata.RuntimeClassName,
+		LocalPlatform:       localPlatformForConfig(cfg),
 		SupportsTTL:         caps.SupportsTTL,
 		SupportsPauseResume: caps.SupportsPauseResume,
 		SupportsFileUpload:  caps.SupportsFileUpload,
@@ -839,16 +1053,24 @@ func providerArtifact(cfg model.RunConfig, caps model.BackendCapabilities) model
 		artifact.Runtime = string(cfg.OpenSandbox.Runtime)
 		artifact.Server = cfg.OpenSandbox.BaseURL
 	}
+	if cfg.Backend.Kind == model.BackendKindDevContainer && devInfo != nil {
+		copied := *devInfo
+		artifact.DevContainer = &copied
+	}
 	return artifact
 }
 
 func sandboxArtifact(info backend.SandboxInfo, cfg model.RunConfig) model.SandboxArtifact {
 	return model.SandboxArtifact{
-		SandboxID:   info.ID,
-		Status:      info.Status,
-		ExpiresAt:   info.ExpiresAt,
-		NetworkMode: cfg.OpenSandbox.NetworkMode,
-		Metadata:    info.Metadata,
+		SandboxID:        info.ID,
+		Status:           info.Status,
+		ExpiresAt:        info.ExpiresAt,
+		NetworkMode:      cfg.OpenSandbox.NetworkMode,
+		RuntimeProfile:   string(cfg.Runtime.Profile),
+		RuntimeClassName: cfg.Kata.RuntimeClassName,
+		Virtualization:   virtualizationForRuntime(cfg.Runtime.Profile),
+		MachineName:      machineNameForSandbox(cfg, info),
+		Metadata:         info.Metadata,
 	}
 }
 
@@ -872,8 +1094,36 @@ func (e Engine) downloadExpectedArtifacts(ctx context.Context, state *runState) 
 }
 
 func (e Engine) cleanupBackend(ctx context.Context, state *runState) error {
-	if state.backend == nil || state.sandboxInfo.ID == "" || state.req.RunConfig.Backend.Kind != model.BackendKindOpenSandbox {
+	if state.backend == nil || state.sandboxInfo.ID == "" || !requiresManagedSandbox(state.req.RunConfig) {
 		return nil
+	}
+	if state.req.RunConfig.Backend.Kind == model.BackendKindDevContainer {
+		if strings.EqualFold(state.req.RunConfig.DevContainer.CleanupMode, "keep") {
+			_ = state.emitter.EmitEvent(ctx, model.RunEvent{Name: "devcontainer.keep", Phase: model.PhaseCollect, At: time.Now().UTC()})
+			return nil
+		}
+		_ = state.emitter.EmitEvent(ctx, model.RunEvent{Name: "devcontainer.down", Phase: model.PhaseCollect, At: time.Now().UTC()})
+		return state.backend.Delete(ctx, state.sandboxInfo.ID)
+	}
+	if state.req.RunConfig.Backend.Kind == model.BackendKindAppleContainer {
+		if strings.EqualFold(state.req.RunConfig.AppleContainer.CleanupMode, "keep") {
+			_ = state.emitter.EmitEvent(ctx, model.RunEvent{Name: "container.keep", Phase: model.PhaseCollect, At: time.Now().UTC()})
+			return nil
+		}
+		_ = state.emitter.EmitEvent(ctx, model.RunEvent{Name: "container.delete", Phase: model.PhaseCollect, At: time.Now().UTC()})
+		return state.backend.Delete(ctx, state.sandboxInfo.ID)
+	}
+	if state.req.RunConfig.Backend.Kind == model.BackendKindOrbStackMachine {
+		switch strings.ToLower(state.req.RunConfig.OrbStack.MachineCleanupMode) {
+		case "stop":
+			_ = state.emitter.EmitEvent(ctx, model.RunEvent{Name: "machine.stop", Phase: model.PhaseCollect, At: time.Now().UTC()})
+		case "delete":
+			_ = state.emitter.EmitEvent(ctx, model.RunEvent{Name: "machine.delete", Phase: model.PhaseCollect, At: time.Now().UTC()})
+		default:
+			_ = state.emitter.EmitEvent(ctx, model.RunEvent{Name: "machine.keep", Phase: model.PhaseCollect, At: time.Now().UTC()})
+			return nil
+		}
+		return state.backend.Delete(ctx, state.sandboxInfo.ID)
 	}
 	switch state.req.RunConfig.OpenSandbox.CleanupMode {
 	case model.OpenSandboxCleanupKeep:
@@ -893,6 +1143,269 @@ func (e Engine) cleanupBackend(ctx context.Context, state *runState) error {
 		_ = state.emitter.EmitEvent(ctx, model.RunEvent{Name: "sandbox.cleanup.delete", Phase: model.PhaseCollect, At: time.Now().UTC()})
 		return state.backend.Delete(ctx, state.sandboxInfo.ID)
 	}
+}
+
+func runtimeArtifact(cfg model.RunConfig, runtimeInfo model.RuntimeInfo) model.RuntimeArtifact {
+	containerID := runtimeInfo.ContainerID
+	if cfg.Backend.Kind != model.BackendKindOrbStackMachine {
+		containerID = firstNonEmpty(containerID, cfg.Run.SandboxID)
+	}
+	return model.RuntimeArtifact{
+		BackendKind:      string(cfg.Backend.Kind),
+		ProviderName:     providerNameForConfig(cfg),
+		BackendProvider:  firstNonEmpty(runtimeInfo.BackendProvider, backendProviderForConfig(cfg)),
+		RuntimeProfile:   runtimeInfo.RuntimeProfile,
+		RuntimeClassName: runtimeInfo.RuntimeClassName,
+		ContainerRuntime: runtimeInfo.ContainerRuntime,
+		Virtualization:   runtimeInfo.Virtualization,
+		HostOS:           runtimeInfo.HostOS,
+		HostArch:         runtimeInfo.HostArch,
+		LocalPlatform:    firstNonEmpty(runtimeInfo.LocalPlatform, localPlatformForConfig(cfg)),
+		MachineName:      firstNonEmpty(runtimeInfo.MachineName, cfg.OrbStack.MachineName),
+		ContainerID:      containerID,
+		Available:        runtimeInfo.Available,
+		CheckedBy:        runtimeInfo.CheckedBy,
+		Detail:           runtimeInfo.Detail,
+	}
+}
+
+func providerNameForConfig(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindOpenSandbox:
+		return "opensandbox"
+	case model.BackendKindDevContainer:
+		return "devcontainer"
+	default:
+		return string(cfg.Backend.Kind)
+	}
+}
+
+func backendProviderForConfig(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindDirect:
+		return "native"
+	case model.BackendKindDocker:
+		if cfg.Docker.Provider == model.DockerProviderOrbStack {
+			return "orbstack"
+		}
+		return "docker"
+	case model.BackendKindK8s:
+		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
+			return "orbstack"
+		}
+		return "k8s"
+	case model.BackendKindOrbStackMachine:
+		return "orbstack"
+	default:
+		return string(cfg.Backend.Kind)
+	}
+}
+
+func localPlatformForConfig(cfg model.RunConfig) string {
+	switch {
+	case cfg.Backend.Kind == model.BackendKindAppleContainer:
+		return "macos"
+	case cfg.Backend.Kind == model.BackendKindOrbStackMachine:
+		return "orbstack"
+	case cfg.Backend.Kind == model.BackendKindDocker && cfg.Docker.Provider == model.DockerProviderOrbStack:
+		return "orbstack"
+	case cfg.Backend.Kind == model.BackendKindK8s && cfg.K8s.Provider == model.K8sProviderOrbStackLocal:
+		return "orbstack"
+	default:
+		return ""
+	}
+}
+
+func runtimeKindForConfig(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindOpenSandbox:
+		return string(cfg.OpenSandbox.Runtime)
+	case model.BackendKindDevContainer:
+		return "devcontainer"
+	case model.BackendKindAppleContainer:
+		return "apple-container"
+	case model.BackendKindOrbStackMachine:
+		return "orbstack-machine"
+	case model.BackendKindDocker:
+		return "docker"
+	case model.BackendKindK8s:
+		return "kubernetes"
+	default:
+		return string(cfg.Backend.Kind)
+	}
+}
+
+func sandboxImage(cfg model.RunConfig) string {
+	if cfg.Sandbox.Image != "" {
+		return cfg.Sandbox.Image
+	}
+	return cfg.Run.Image
+}
+
+func machineNameForSandbox(cfg model.RunConfig, info backend.SandboxInfo) string {
+	if cfg.Backend.Kind != model.BackendKindOrbStackMachine {
+		return ""
+	}
+	if info.Metadata["machine_name"] != "" {
+		return info.Metadata["machine_name"]
+	}
+	if info.ID != "" {
+		return info.ID
+	}
+	return cfg.OrbStack.MachineName
+}
+
+func backendProfileArtifact(cfg model.RunConfig, runtimeInfo model.RuntimeInfo) model.BackendProfileArtifact {
+	return model.BackendProfileArtifact{
+		BackendKind:     string(cfg.Backend.Kind),
+		BackendProvider: firstNonEmpty(runtimeInfo.BackendProvider, backendProviderForConfig(cfg)),
+		RuntimeProfile:  firstNonEmpty(runtimeInfo.RuntimeProfile, string(cfg.Runtime.Profile)),
+		LocalPlatform:   firstNonEmpty(runtimeInfo.LocalPlatform, localPlatformForConfig(cfg)),
+	}
+}
+
+func machineArtifact(info backend.SandboxInfo, cfg model.RunConfig) model.MachineArtifact {
+	if cfg.Backend.Kind != model.BackendKindOrbStackMachine {
+		return model.MachineArtifact{}
+	}
+	return model.MachineArtifact{
+		MachineName: machineNameForSandbox(cfg, info),
+		Status:      info.Status,
+		Distro:      info.Metadata["distro"],
+	}
+}
+
+func containerArtifact(info backend.SandboxInfo, cfg model.RunConfig) model.ContainerArtifact {
+	if cfg.Backend.Kind != model.BackendKindAppleContainer {
+		return model.ContainerArtifact{}
+	}
+	image := info.Metadata["image"]
+	if image == "" {
+		image = sandboxImage(cfg)
+	}
+	return model.ContainerArtifact{
+		ContainerID: firstNonEmpty(info.ID, cfg.Run.SandboxID),
+		Image:       image,
+		Status:      info.Status,
+	}
+}
+
+func collectRemoteArtifactDir(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindOpenSandbox:
+		return path.Join(cfg.OpenSandbox.WorkspaceRoot, filepath.Base(cfg.Run.ArtifactDir))
+	case model.BackendKindAppleContainer:
+		return path.Join(cfg.AppleContainer.WorkspaceRoot, filepath.Base(cfg.Run.ArtifactDir))
+	case model.BackendKindOrbStackMachine:
+		return path.Join(cfg.OrbStack.MachineWorkspaceRoot, filepath.Base(cfg.Run.ArtifactDir))
+	default:
+		return ""
+	}
+}
+
+func prepareActionForBackend(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindAppleContainer:
+		return "container.create"
+	case model.BackendKindOrbStackMachine:
+		return "machine.create"
+	case model.BackendKindDevContainer:
+		return "devcontainer.up"
+	case model.BackendKindOpenSandbox:
+		return "sandbox.create"
+	default:
+		return ""
+	}
+}
+
+func execActionForBackend(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindAppleContainer:
+		return "container.exec"
+	case model.BackendKindOrbStackMachine:
+		return "machine.exec"
+	case model.BackendKindDevContainer, model.BackendKindOpenSandbox:
+		return "sandbox.exec"
+	default:
+		return ""
+	}
+}
+
+func cleanupActionForBackend(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindAppleContainer:
+		if strings.EqualFold(cfg.AppleContainer.CleanupMode, "keep") {
+			return "container.keep"
+		}
+		return "container.delete"
+	case model.BackendKindOrbStackMachine:
+		switch strings.ToLower(cfg.OrbStack.MachineCleanupMode) {
+		case "stop":
+			return "machine.stop"
+		case "delete":
+			return "machine.delete"
+		default:
+			return "machine.keep"
+		}
+	case model.BackendKindDevContainer:
+		if strings.EqualFold(cfg.DevContainer.CleanupMode, "keep") {
+			return "devcontainer.keep"
+		}
+		return "devcontainer.down"
+	case model.BackendKindOpenSandbox:
+		switch cfg.OpenSandbox.CleanupMode {
+		case model.OpenSandboxCleanupKeep:
+			return "sandbox.keep"
+		case model.OpenSandboxCleanupPause, model.OpenSandboxCleanupPauseElseKeep:
+			return "sandbox.pause"
+		default:
+			return "sandbox.delete"
+		}
+	default:
+		return ""
+	}
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func requiresManagedSandbox(cfg model.RunConfig) bool {
+	switch cfg.Backend.Kind {
+	case model.BackendKindOpenSandbox, model.BackendKindDevContainer, model.BackendKindAppleContainer, model.BackendKindOrbStackMachine:
+		return true
+	default:
+		return false
+	}
+}
+
+func virtualizationForRuntime(profile model.RuntimeProfile) string {
+	switch profile {
+	case model.RuntimeProfileKata:
+		return "kata"
+	case model.RuntimeProfileAppleContainer:
+		return "apple-container"
+	case model.RuntimeProfileOrbStackMachine:
+		return "vm"
+	default:
+		return "none"
+	}
+}
+
+func errorCodeForErr(defaultCode model.ErrorCode, err error) model.ErrorCode {
+	if err == nil {
+		return defaultCode
+	}
+	var runnerErr model.RunnerError
+	if errors.As(err, &runnerErr) && runnerErr.Code != "" {
+		return model.ErrorCode(runnerErr.Code)
+	}
+	return defaultCode
 }
 
 func maxInt(values ...int) int {

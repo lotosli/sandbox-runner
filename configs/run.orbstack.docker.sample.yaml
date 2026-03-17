@@ -1,0 +1,61 @@
+run:
+  service_name: sandbox-runner-orbstack-docker-demo
+  mode: local
+  run_id: ""
+  attempt: 1
+  sandbox_id: local-orbstack-docker
+  workspace_dir: .
+  artifact_dir: .sandbox-runner
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - go
+    - test
+    - ./...
+  language: auto
+  image: golang:1.24-alpine
+
+backend:
+  kind: docker
+
+runtime:
+  profile: orbstack-docker
+
+platform:
+  target_os: auto
+  target_arch: auto
+  run_mode: local_docker
+  container_execution_mode: host-runner
+  feature_gates:
+    go_basic_runner: true
+    go_manual_sdk: true
+    go_autosdk_bridge: false
+    obi_ebpf: false
+    k8s_operator_go_inject: false
+    local_docker_mode: true
+    local_direct_mode: false
+    stg_linux_mode: false
+    local_apple_container_mode: false
+    local_orbstack_machine_mode: false
+
+docker:
+  provider: orbstack
+  binary: docker
+  compose_binary: docker
+  context: orbstack
+
+orbstack:
+  enabled: true
+  docker_provider_enabled: true
+  docker_context: orbstack
+  orb_binary: orb
+  orbctl_binary: orbctl
+
+provider:
+  prefer_opensandbox: false
+  require_capabilities:
+    - stream_logs
+    - oci_image
+  fallback_order:
+    - docker
+    - direct

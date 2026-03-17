@@ -13,13 +13,13 @@ import (
 )
 
 var defaultWorkspaceExcludes = map[string]struct{}{
-	".git":         {},
-	"node_modules": {},
-	".venv":        {},
-	"dist":         {},
-	".artifacts":   {},
-	".sandbox-run": {},
-	".DS_Store":    {},
+	".git":            {},
+	"node_modules":    {},
+	".venv":           {},
+	"dist":            {},
+	".artifacts":      {},
+	".sandbox-runner": {},
+	".DS_Store":       {},
 }
 
 func (b *OpenSandboxBackend) syncInTar(ctx context.Context, sandboxID string, localDir string, remoteDir string) error {

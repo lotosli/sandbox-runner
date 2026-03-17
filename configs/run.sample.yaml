@@ -5,7 +5,7 @@ run:
   attempt: 1
   sandbox_id: local-dev
   workspace_dir: .
-  artifact_dir: .sandbox-run
+  artifact_dir: .sandbox-runner
   otlp_endpoint: http://127.0.0.1:4318
   deployment_environment: local
   command:
@@ -53,11 +53,14 @@ collector:
 
 artifacts:
   upload: false
-  object_prefix: sandbox-runs/
+  object_prefix: sandbox-runner-runs/
   backend: local
 
 backend:
   kind: direct
+
+runtime:
+  profile: native
 
 platform:
   target_os: auto
@@ -104,6 +107,27 @@ provider:
     - opensandbox
     - docker
     - direct
+
+kata:
+  enabled: false
+  runtime_class_name: kata
+  containerd_runtime: io.containerd.kata.v2
+  require_hardware_virtualization: true
+  fail_if_unavailable: false
+
+devcontainer:
+  cli_path: devcontainer
+  workspace_folder: .
+  config_path: .devcontainer/devcontainer.json
+  mount_workspace_git_root: true
+  remove_existing_container: false
+  skip_post_create: false
+  run_user_commands: true
+  up_timeout_sec: 300
+  exec_timeout_sec: 1800
+  id_label_prefix: ai-sandbox-runner
+  log_level: info
+  cleanup_mode: delete
 
 go:
   classify_commands: true

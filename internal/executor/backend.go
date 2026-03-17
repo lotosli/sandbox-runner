@@ -91,15 +91,20 @@ loop:
 					Phase:          spec.Phase,
 					CommandClass:   spec.CommandClass,
 					CommandID:      handle.ExecID,
-					Provider:       providerName(spec.RunConfig),
+					Provider:       backendProviderName(spec.RunConfig),
 					ExecProviderID: handle.ExecID,
 					Stream:         chunk.Stream,
 					LineNo:         lineNo,
 					Line:           proc.Redact(truncateLine(chunk.Line, spec.LogLineMaxBytes)),
 					Attributes: map[string]string{
-						"sandbox.backend.kind":  string(spec.RunConfig.Backend.Kind),
-						"sandbox.provider.name": providerName(spec.RunConfig),
-						"sandbox.runtime.kind":  string(spec.RunConfig.OpenSandbox.Runtime),
+						"backend.kind":            string(spec.RunConfig.Backend.Kind),
+						"backend.provider":        backendProviderName(spec.RunConfig),
+						"runtime.profile":         string(spec.RunConfig.Runtime.Profile),
+						"sandbox.backend.kind":    string(spec.RunConfig.Backend.Kind),
+						"sandbox.provider.name":   providerName(spec.RunConfig),
+						"sandbox.runtime.kind":    string(spec.RunConfig.OpenSandbox.Runtime),
+						"sandbox.runtime.profile": string(spec.RunConfig.Runtime.Profile),
+						"sandbox.runtime.class":   spec.RunConfig.Kata.RuntimeClassName,
 					},
 				})
 			}
@@ -134,6 +139,7 @@ loop:
 		Metadata: map[string]any{
 			"backend_kind":     spec.RunConfig.Backend.Kind,
 			"provider":         providerName(spec.RunConfig),
+			"backend_provider": backendProviderName(spec.RunConfig),
 			"exec_provider_id": handle.ExecID,
 		},
 	}
@@ -155,13 +161,22 @@ loop:
 
 func (e BackendExecutor) remoteCwd(localDir string) string {
 	workspace := e.runCfg.Run.WorkspaceDir
-	remoteRoot := e.runCfg.OpenSandbox.WorkspaceRoot
+	remoteRoot := backendWorkspaceRoot(e.runCfg)
 	if localDir == "" || workspace == "" || remoteRoot == "" {
+		if e.runCfg.Backend.Kind == model.BackendKindDevContainer {
+			return ""
+		}
 		return remoteRoot
 	}
 	rel, err := filepath.Rel(workspace, localDir)
 	if err != nil || rel == "." {
+		if e.runCfg.Backend.Kind == model.BackendKindDevContainer {
+			return ""
+		}
 		return remoteRoot
+	}
+	if e.runCfg.Backend.Kind == model.BackendKindDevContainer {
+		return path.Join("/workspace", filepath.ToSlash(rel))
 	}
 	return path.Join(remoteRoot, filepath.ToSlash(rel))
 }
@@ -171,26 +186,92 @@ func (e BackendExecutor) resultTarget(sandboxID string) model.ExecutionTarget {
 	if image == "" {
 		image = e.runCfg.Run.Image
 	}
-	return model.ExecutionTarget{
-		OS:              "linux",
-		Arch:            e.target.Arch,
-		Mode:            e.runCfg.Platform.RunMode,
-		BackendKind:     string(e.runCfg.Backend.Kind),
-		ProviderName:    providerName(e.runCfg),
-		RuntimeKind:     string(e.runCfg.OpenSandbox.Runtime),
-		NetworkMode:     e.runCfg.OpenSandbox.NetworkMode,
-		ContainerID:     sandboxID,
-		ContainerImage:  image,
-		InKubernetes:    e.runCfg.OpenSandbox.Runtime == model.OpenSandboxRuntimeKubernetes,
-		DockerAvailable: e.runCfg.OpenSandbox.Runtime == model.OpenSandboxRuntimeDocker,
+	target := model.ExecutionTarget{
+		OS:               "linux",
+		Arch:             e.target.Arch,
+		Mode:             e.runCfg.Platform.RunMode,
+		BackendKind:      string(e.runCfg.Backend.Kind),
+		ProviderName:     providerName(e.runCfg),
+		BackendProvider:  backendProviderName(e.runCfg),
+		RuntimeProfile:   string(e.runCfg.Runtime.Profile),
+		RuntimeClassName: e.runCfg.Kata.RuntimeClassName,
+		ContainerID:      sandboxID,
+		ContainerImage:   image,
 	}
+	switch e.runCfg.Backend.Kind {
+	case model.BackendKindDevContainer:
+		target.RuntimeKind = "devcontainer"
+		target.Virtualization = "none"
+	case model.BackendKindOpenSandbox:
+		target.RuntimeKind = string(e.runCfg.OpenSandbox.Runtime)
+		target.NetworkMode = e.runCfg.OpenSandbox.NetworkMode
+		target.InKubernetes = e.runCfg.OpenSandbox.Runtime == model.OpenSandboxRuntimeKubernetes
+		target.DockerAvailable = e.runCfg.OpenSandbox.Runtime == model.OpenSandboxRuntimeDocker
+		if e.runCfg.Runtime.Profile == model.RuntimeProfileKata {
+			target.Virtualization = "kata"
+		} else {
+			target.Virtualization = "none"
+		}
+	case model.BackendKindAppleContainer:
+		target.RuntimeKind = "apple-container"
+		target.Virtualization = "apple-container"
+		target.LocalPlatform = "macos"
+	case model.BackendKindOrbStackMachine:
+		target.RuntimeKind = "orbstack-machine"
+		target.Virtualization = "vm"
+		target.LocalPlatform = "orbstack"
+		target.MachineName = e.runCfg.OrbStack.MachineName
+	}
+	return target
 }
 
 func providerName(cfg model.RunConfig) string {
 	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
 		return "opensandbox"
 	}
+	if cfg.Backend.Kind == model.BackendKindOrbStackMachine {
+		return string(cfg.Backend.Kind)
+	}
 	return string(cfg.Backend.Kind)
+}
+
+func backendProviderName(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindDocker:
+		if cfg.Docker.Provider == model.DockerProviderOrbStack {
+			return "orbstack"
+		}
+		return "docker"
+	case model.BackendKindK8s:
+		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
+			return "orbstack"
+		}
+		return "k8s"
+	case model.BackendKindOrbStackMachine:
+		return "orbstack"
+	case model.BackendKindDirect:
+		return "native"
+	default:
+		return string(cfg.Backend.Kind)
+	}
+}
+
+func backendWorkspaceRoot(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindDevContainer:
+		if cfg.DevContainer.WorkspaceFolder != "" {
+			return cfg.DevContainer.WorkspaceFolder
+		}
+		return "/workspace"
+	case model.BackendKindAppleContainer:
+		return cfg.AppleContainer.WorkspaceRoot
+	case model.BackendKindOrbStackMachine:
+		return cfg.OrbStack.MachineWorkspaceRoot
+	case model.BackendKindOpenSandbox:
+		return cfg.OpenSandbox.WorkspaceRoot
+	default:
+		return ""
+	}
 }
 
 func truncateLine(line string, limit int) string {

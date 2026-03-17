@@ -1,0 +1,68 @@
+run:
+  service_name: sandbox-runner-orbstack-machine-demo
+  mode: local
+  run_id: ""
+  attempt: 1
+  sandbox_id: ""
+  workspace_dir: .
+  artifact_dir: .sandbox-runner
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - go
+    - test
+    - ./...
+  language: auto
+
+backend:
+  kind: orbstack-machine
+
+runtime:
+  profile: orbstack-machine
+
+platform:
+  target_os: darwin
+  target_arch: arm64
+  run_mode: local_orbstack_machine
+  container_execution_mode: host-runner
+  feature_gates:
+    go_basic_runner: true
+    go_manual_sdk: true
+    go_autosdk_bridge: false
+    obi_ebpf: false
+    k8s_operator_go_inject: false
+    local_docker_mode: false
+    local_direct_mode: false
+    stg_linux_mode: false
+    local_apple_container_mode: false
+    local_orbstack_machine_mode: true
+
+orbstack:
+  enabled: true
+  orb_binary: orb
+  orbctl_binary: orbctl
+  machine_enabled: true
+  machine_name: ai-runner-dev
+  machine_auto_create: false
+  machine_distro: ubuntu
+  machine_workspace_root: ""
+  machine_cleanup_mode: stop
+  upload_strategy: copy
+  download_strategy: copy
+
+provider:
+  prefer_opensandbox: false
+  require_capabilities:
+    - machine_exec
+    - vm_isolation
+    - stream_logs
+  fallback_order:
+    - orbstack-machine
+    - docker
+    - direct
+  mac_local_preferred:
+    - apple-container
+    - orbstack-machine
+    - docker
+    - devcontainer
+    - direct

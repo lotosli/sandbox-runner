@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -39,7 +41,15 @@ type DockerExecutor struct {
 }
 
 func NewDockerExecutor(runCfg model.RunConfig) (DockerExecutor, error) {
-	cli, err := mobyclient.New(mobyclient.FromEnv, mobyclient.WithAPIVersionNegotiation())
+	opts := []mobyclient.Opt{mobyclient.WithAPIVersionNegotiation()}
+	if host, err := dockerClientHost(runCfg); err != nil {
+		return DockerExecutor{}, err
+	} else if host != "" {
+		opts = append(opts, mobyclient.WithHost(host))
+	} else {
+		opts = append(opts, mobyclient.FromEnv)
+	}
+	cli, err := mobyclient.New(opts...)
 	if err != nil {
 		return DockerExecutor{}, err
 	}
@@ -59,12 +69,13 @@ func (e DockerExecutor) Run(ctx context.Context, spec Spec, handler proc.IOHandl
 		return Result{}, err
 	}
 
-	if err := e.pullImage(ctx, spec.RunConfig.Run.Image); err != nil {
+	image := dockerImage(spec.RunConfig)
+	if err := e.pullImage(ctx, image); err != nil {
 		return Result{}, err
 	}
 
 	containerCfg := &mobycontainer.Config{
-		Image:        spec.RunConfig.Run.Image,
+		Image:        image,
 		Cmd:          spec.Command,
 		Env:          envSlice(spec.Env),
 		WorkingDir:   "/workspace",
@@ -86,7 +97,6 @@ func (e DockerExecutor) Run(ctx context.Context, spec Spec, handler proc.IOHandl
 	created, err := e.client.ContainerCreate(ctx, mobyclient.ContainerCreateOptions{
 		Config:     containerCfg,
 		HostConfig: hostCfg,
-		Image:      spec.RunConfig.Run.Image,
 	})
 	if err != nil {
 		return Result{}, err
@@ -180,8 +190,14 @@ func (e DockerExecutor) Run(ctx context.Context, spec Spec, handler proc.IOHandl
 			OS:              "linux",
 			Arch:            spec.Target.Arch,
 			Mode:            spec.RunConfig.Platform.RunMode,
+			BackendKind:     string(spec.RunConfig.Backend.Kind),
+			ProviderName:    "docker",
+			BackendProvider: dockerProviderName(spec.RunConfig),
+			RuntimeProfile:  string(spec.RunConfig.Runtime.Profile),
+			Virtualization:  "none",
+			LocalPlatform:   dockerLocalPlatform(spec.RunConfig),
 			ContainerID:     containerID,
-			ContainerImage:  spec.RunConfig.Run.Image,
+			ContainerImage:  image,
 			ImageDigest:     imageDigest,
 			InContainer:     spec.RunConfig.Platform.ContainerExecutionMode == model.ContainerExecutionInContainerMode,
 			InKubernetes:    false,
@@ -190,7 +206,9 @@ func (e DockerExecutor) Run(ctx context.Context, spec Spec, handler proc.IOHandl
 		},
 		Metadata: map[string]any{
 			"container_id":             containerID,
-			"container_image":          spec.RunConfig.Run.Image,
+			"container_image":          image,
+			"backend_provider":         dockerProviderName(spec.RunConfig),
+			"local_platform":           dockerLocalPlatform(spec.RunConfig),
 			"container_execution_mode": spec.RunConfig.Platform.ContainerExecutionMode,
 			"mounts":                   inspectMounts(inspectResult.Container),
 			"warnings":                 created.Warnings,
@@ -286,11 +304,107 @@ func (w *dockerLineWriter) emitLine(line string) {
 			Attempt:      w.spec.Attempt,
 			Phase:        w.spec.Phase,
 			CommandClass: w.spec.CommandClass,
+			Provider:     dockerProviderName(w.spec.RunConfig),
 			Stream:       w.stream,
 			LineNo:       w.lines,
 			Line:         proc.Redact(line),
+			Attributes: map[string]string{
+				"backend.kind":            string(w.spec.RunConfig.Backend.Kind),
+				"backend.provider":        dockerProviderName(w.spec.RunConfig),
+				"runtime.profile":         string(w.spec.RunConfig.Runtime.Profile),
+				"local.platform":          dockerLocalPlatform(w.spec.RunConfig),
+				"sandbox.backend.kind":    string(w.spec.RunConfig.Backend.Kind),
+				"sandbox.provider.name":   "docker",
+				"sandbox.runtime.profile": string(w.spec.RunConfig.Runtime.Profile),
+			},
 		})
 	}
+}
+
+func dockerImage(cfg model.RunConfig) string {
+	if cfg.Run.Image != "" {
+		return cfg.Run.Image
+	}
+	return cfg.Sandbox.Image
+}
+
+func dockerProviderName(cfg model.RunConfig) string {
+	if cfg.Docker.Provider == model.DockerProviderOrbStack {
+		return "orbstack"
+	}
+	return "docker"
+}
+
+func dockerLocalPlatform(cfg model.RunConfig) string {
+	if cfg.Docker.Provider == model.DockerProviderOrbStack {
+		return "orbstack"
+	}
+	return ""
+}
+
+func dockerClientHost(cfg model.RunConfig) (string, error) {
+	if cfg.Docker.Provider != model.DockerProviderOrbStack && (cfg.Docker.Context == "" || cfg.Docker.Context == "default") {
+		return "", nil
+	}
+
+	contextName := strings.TrimSpace(cfg.Docker.Context)
+	if contextName == "" {
+		contextName = strings.TrimSpace(cfg.OrbStack.DockerContext)
+	}
+	if contextName == "" && cfg.Docker.Provider == model.DockerProviderOrbStack {
+		contextName = "orbstack"
+	}
+	if contextName == "" || contextName == "default" {
+		return "", nil
+	}
+
+	endpoint, err := inspectDockerContext(contextName)
+	if err == nil && endpoint != "" {
+		return endpoint, nil
+	}
+	if cfg.Docker.Provider == model.DockerProviderOrbStack {
+		if fallback := orbstackDockerHost(); fallback != "" {
+			return fallback, nil
+		}
+		return "", model.RunnerError{
+			Code:        string(model.ErrorCodeDockerProviderUnavailable),
+			Message:     fmt.Sprintf("docker provider %q unavailable: %v", cfg.Docker.Provider, err),
+			BackendKind: string(model.BackendKindDocker),
+			Cause:       err,
+		}
+	}
+	return "", err
+}
+
+func inspectDockerContext(name string) (string, error) {
+	if name == "" {
+		return "", nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker", "context", "inspect", name, "--format", "{{json .Endpoints.docker.Host}}")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("inspect docker context %s: %w", name, err)
+	}
+	endpoint := strings.TrimSpace(string(output))
+	endpoint = strings.Trim(endpoint, `"`)
+	if endpoint == "" || endpoint == "null" {
+		return "", fmt.Errorf("docker context %s has no docker endpoint", name)
+	}
+	return endpoint, nil
+}
+
+func orbstackDockerHost() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	socketPath := filepath.Join(home, ".orbstack", "run", "docker.sock")
+	if _, err := os.Stat(socketPath); err != nil {
+		return ""
+	}
+	return "unix://" + socketPath
 }
 
 func envSlice(env map[string]string) []string {

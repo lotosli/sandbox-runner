@@ -10,6 +10,7 @@ import (
 type SandboxBackend interface {
 	Kind() model.BackendKind
 	Capabilities(ctx context.Context) (model.BackendCapabilities, error)
+	RuntimeInfo(ctx context.Context) (model.RuntimeInfo, error)
 
 	Create(ctx context.Context, req CreateSandboxRequest) (SandboxInfo, error)
 	Start(ctx context.Context, sandboxID string) error
@@ -35,6 +36,10 @@ type WorkspaceSyncer interface {
 type MetadataProvider interface {
 	SandboxMetadata(ctx context.Context, sandboxID string) (SandboxInfo, error)
 	Endpoints(ctx context.Context, sandboxID string, ports []int) ([]model.Endpoint, error)
+}
+
+type DevContainerMetadataProvider interface {
+	DevContainerMetadata(ctx context.Context, sandboxID string) (model.DevContainerArtifact, error)
 }
 
 type ArtifactDownloader interface {

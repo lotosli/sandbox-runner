@@ -2,7 +2,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: sandbox-runner-config
-  namespace: ai-sandbox-runs
+  namespace: ai-sandbox-runner-runs
 data:
   run.yaml: |
     # replace with configs/run.sample.yaml content

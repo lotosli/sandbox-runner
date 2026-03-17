@@ -1,8 +1,8 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: sandbox-run-{{RUN_ID}}
-  namespace: ai-sandbox-runs
+  name: sandbox-runner-{{RUN_ID}}
+  namespace: ai-sandbox-runner-runs
   labels:
     app: sandbox-runner
     run_id: "{{RUN_ID}}"
@@ -22,7 +22,7 @@ spec:
       containers:
         - name: runner
           image: registry.company.internal/ai/sandbox-runner:latest
-          command: ["/usr/local/bin/sandbox-run", "run", "--config", "/etc/sandbox/run.yaml", "--policy", "/etc/sandbox/policy.yaml", "--", "pytest", "-q"]
+          command: ["/usr/local/bin/sandbox-runner", "run", "--config", "/etc/sandbox/run.yaml", "--policy", "/etc/sandbox/policy.yaml", "--", "pytest", "-q"]
           env:
             - name: RUN_ID
               value: "{{RUN_ID}}"

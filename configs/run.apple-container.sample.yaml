@@ -1,0 +1,67 @@
+run:
+  service_name: sandbox-runner-apple-container-demo
+  mode: local
+  run_id: ""
+  attempt: 1
+  sandbox_id: ""
+  workspace_dir: .
+  artifact_dir: .sandbox-runner
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - go
+    - test
+    - ./...
+  language: auto
+  image: golang:1.24-alpine
+
+backend:
+  kind: apple-container
+
+runtime:
+  profile: apple-container
+
+platform:
+  target_os: darwin
+  target_arch: arm64
+  run_mode: local_apple_container
+  container_execution_mode: host-runner
+  feature_gates:
+    go_basic_runner: true
+    go_manual_sdk: true
+    go_autosdk_bridge: false
+    obi_ebpf: false
+    k8s_operator_go_inject: false
+    local_docker_mode: false
+    local_direct_mode: false
+    stg_linux_mode: false
+    local_apple_container_mode: true
+    local_orbstack_machine_mode: false
+
+apple_container:
+  enabled: true
+  binary: container
+  image: golang:1.24-alpine
+  workspace_root: /workspace
+  create_timeout_sec: 120
+  exec_timeout_sec: 1800
+  cleanup_mode: delete
+  upload_strategy: tar
+  download_strategy: tar
+
+provider:
+  prefer_opensandbox: false
+  require_capabilities:
+    - file_upload
+    - stream_logs
+    - oci_image
+  fallback_order:
+    - apple-container
+    - docker
+    - direct
+  mac_local_preferred:
+    - apple-container
+    - orbstack-machine
+    - docker
+    - devcontainer
+    - direct

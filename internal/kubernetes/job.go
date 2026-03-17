@@ -14,12 +14,15 @@ func BuildJob(req model.RunRequest, namespace string) *batchv1.Job {
 	runID := req.RunConfig.Run.RunID
 	attempt := fmt.Sprintf("%d", req.RunConfig.Run.Attempt)
 	labels := map[string]string{
-		"app":     "sandbox-runner",
-		"run_id":  runID,
-		"attempt": attempt,
+		"app":              "sandbox-runner",
+		"run_id":           runID,
+		"attempt":          attempt,
+		"backend_kind":     string(req.RunConfig.Backend.Kind),
+		"backend_provider": backendProvider(req.RunConfig),
+		"runtime_profile":  string(req.RunConfig.Runtime.Profile),
 	}
 
-	command := []string{"/usr/local/bin/sandbox-run", "run", "--config", "/etc/sandbox/run.yaml", "--policy", "/etc/sandbox/policy.yaml", "--"}
+	command := []string{"/usr/local/bin/sandbox-runner", "run", "--config", "/etc/sandbox/run.yaml", "--policy", "/etc/sandbox/policy.yaml", "--"}
 	command = append(command, req.RunConfig.Run.Command...)
 
 	return &batchv1.Job{
@@ -28,7 +31,7 @@ func BuildJob(req model.RunRequest, namespace string) *batchv1.Job {
 			Kind:       "Job",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "sandbox-run-" + runID,
+			Name:      "sandbox-runner-" + runID,
 			Namespace: namespace,
 			Labels:    labels,
 		},
@@ -40,6 +43,7 @@ func BuildJob(req model.RunRequest, namespace string) *batchv1.Job {
 				Spec: corev1.PodSpec{
 					RestartPolicy:      corev1.RestartPolicyNever,
 					ServiceAccountName: "sandbox-runner",
+					RuntimeClassName:   runtimeClassName(req),
 					Containers: []corev1.Container{
 						{
 							Name:            "runner",
@@ -50,6 +54,9 @@ func BuildJob(req model.RunRequest, namespace string) *batchv1.Job {
 								{Name: "RUN_ID", Value: runID},
 								{Name: "ATTEMPT", Value: attempt},
 								{Name: "SANDBOX_ID", Value: req.RunConfig.Run.SandboxID},
+								{Name: "BACKEND_KIND", Value: string(req.RunConfig.Backend.Kind)},
+								{Name: "BACKEND_PROVIDER", Value: backendProvider(req.RunConfig)},
+								{Name: "RUNTIME_PROFILE", Value: string(req.RunConfig.Runtime.Profile)},
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "workspace", MountPath: "/workspace"},
@@ -76,4 +83,36 @@ func defaultImage(req model.RunRequest) string {
 		return req.RunConfig.Run.Image
 	}
 	return "registry.company.internal/ai/sandbox-runner:latest"
+}
+
+func runtimeClassName(req model.RunRequest) *string {
+	if req.RunConfig.Runtime.Profile != model.RuntimeProfileKata {
+		return nil
+	}
+	value := req.RunConfig.Kata.RuntimeClassName
+	if value == "" {
+		return nil
+	}
+	return &value
+}
+
+func backendProvider(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindDocker:
+		if cfg.Docker.Provider == model.DockerProviderOrbStack {
+			return "orbstack"
+		}
+		return "docker"
+	case model.BackendKindK8s:
+		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
+			return "orbstack"
+		}
+		return "k8s"
+	case model.BackendKindDirect:
+		return "native"
+	case model.BackendKindOrbStackMachine:
+		return "orbstack"
+	default:
+		return string(cfg.Backend.Kind)
+	}
 }

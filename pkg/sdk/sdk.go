@@ -34,9 +34,17 @@ type Submitter struct {
 	client kubernetes.Client
 }
 
-func NewSubmitter(kubeconfig string) (*Submitter, error) {
-	client, err := kubernetes.NewClient(kubeconfig)
+func NewSubmitter(kubeconfig, contextName string, provider model.K8sProvider) (*Submitter, error) {
+	client, err := kubernetes.NewClient(kubeconfig, contextName)
 	if err != nil {
+		if provider == model.K8sProviderOrbStackLocal {
+			return nil, model.RunnerError{
+				Code:        string(model.ErrorCodeOrbStackK8sContextNotFound),
+				Message:     err.Error(),
+				BackendKind: string(model.BackendKindK8s),
+				Cause:       err,
+			}
+		}
 		return nil, err
 	}
 	return &Submitter{client: client}, nil

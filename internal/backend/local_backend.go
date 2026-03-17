@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"errors"
+	"runtime"
 	"time"
 
 	"github.com/lotosli/sandbox-runner/internal/model"
@@ -12,22 +13,26 @@ var errUnsupported = errors.New("operation not supported by local backend")
 
 type LocalBackend struct {
 	kind         model.BackendKind
+	cfg          model.RunConfig
 	capabilities model.BackendCapabilities
 }
 
-func NewLocalBackend(kind model.BackendKind) *LocalBackend {
+func NewLocalBackend(kind model.BackendKind, cfg model.RunConfig) *LocalBackend {
 	caps := model.BackendCapabilities{}
 	if kind == model.BackendKindDocker {
 		caps.SupportsStreamLogs = true
 		caps.SupportsBridgeNetwork = true
 		caps.SupportsHostNetwork = true
+		caps.SupportsOCIImage = true
 	}
 	if kind == model.BackendKindK8s {
 		caps.SupportsEndpoints = true
 		caps.SupportsFileUpload = true
 		caps.SupportsFileDownload = true
+		caps.SupportsRuntimeProfile = true
+		caps.SupportsK8sTarget = true
 	}
-	return &LocalBackend{kind: kind, capabilities: caps}
+	return &LocalBackend{kind: kind, cfg: cfg, capabilities: caps}
 }
 
 func (b *LocalBackend) Kind() model.BackendKind { return b.kind }
@@ -35,6 +40,41 @@ func (b *LocalBackend) Kind() model.BackendKind { return b.kind }
 func (b *LocalBackend) Capabilities(ctx context.Context) (model.BackendCapabilities, error) {
 	_ = ctx
 	return b.capabilities, nil
+}
+
+func (b *LocalBackend) RuntimeInfo(ctx context.Context) (model.RuntimeInfo, error) {
+	_ = ctx
+	info := model.RuntimeInfo{
+		ProviderKind:     string(b.kind),
+		BackendProvider:  backendProviderForConfig(b.cfg),
+		RuntimeProfile:   string(b.cfg.Runtime.Profile),
+		RuntimeClassName: b.cfg.Kata.RuntimeClassName,
+		HostOS:           runtime.GOOS,
+		HostArch:         runtime.GOARCH,
+		Available:        true,
+	}
+	switch b.kind {
+	case model.BackendKindDocker:
+		info.ContainerRuntime = "docker"
+		if b.cfg.Docker.Provider == model.DockerProviderOrbStack {
+			info.LocalPlatform = "orbstack"
+		}
+	case model.BackendKindK8s:
+		info.ContainerRuntime = "kubernetes"
+		if b.cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
+			info.LocalPlatform = "orbstack"
+		}
+	default:
+		info.ContainerRuntime = string(b.kind)
+	}
+	if b.cfg.Runtime.Profile == model.RuntimeProfileKata {
+		info.Virtualization = "kata"
+	} else if b.cfg.Runtime.Profile == model.RuntimeProfileOrbStackDocker || b.cfg.Runtime.Profile == model.RuntimeProfileOrbStackK8s {
+		info.Virtualization = "none"
+	} else {
+		info.Virtualization = "none"
+	}
+	return info, nil
 }
 
 func (b *LocalBackend) Create(ctx context.Context, req CreateSandboxRequest) (SandboxInfo, error) {

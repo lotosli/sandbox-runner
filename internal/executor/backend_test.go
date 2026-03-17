@@ -2,6 +2,7 @@ package executor
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -22,6 +23,19 @@ func (f *fakeBackend) Kind() model.BackendKind { return model.BackendKindOpenSan
 func (f *fakeBackend) Capabilities(ctx context.Context) (model.BackendCapabilities, error) {
 	_ = ctx
 	return model.BackendCapabilities{SupportsStreamLogs: true}, nil
+}
+
+func (f *fakeBackend) RuntimeInfo(ctx context.Context) (model.RuntimeInfo, error) {
+	_ = ctx
+	return model.RuntimeInfo{
+		ProviderKind:     string(model.BackendKindOpenSandbox),
+		RuntimeProfile:   string(model.RuntimeProfileNative),
+		ContainerRuntime: "opensandbox-docker",
+		HostOS:           "linux",
+		HostArch:         "arm64",
+		Virtualization:   "none",
+		Available:        true,
+	}, nil
 }
 
 func (f *fakeBackend) Create(ctx context.Context, req backend.CreateSandboxRequest) (backend.SandboxInfo, error) {
@@ -169,6 +183,53 @@ func TestBackendExecutorRun(t *testing.T) {
 	}
 	if handler.logs[0].Provider != "opensandbox" {
 		t.Fatalf("provider = %s, want opensandbox", handler.logs[0].Provider)
+	}
+}
+
+func TestBackendExecutorRemoteCwdAppleContainer(t *testing.T) {
+	cfg := config.DefaultRunConfig()
+	cfg.Backend.Kind = model.BackendKindAppleContainer
+	cfg.Platform.RunMode = model.RunModeLocalAppleContainer
+	cfg.Runtime.Profile = model.RuntimeProfileAppleContainer
+	cfg.Run.WorkspaceDir = t.TempDir()
+	cfg.AppleContainer.WorkspaceRoot = "/workspace"
+
+	exec, err := NewBackendExecutor(cfg, model.ExecutionTarget{Arch: "arm64"}, &fakeBackend{})
+	if err != nil {
+		t.Fatalf("NewBackendExecutor() error = %v", err)
+	}
+
+	subdir := filepath.Join(cfg.Run.WorkspaceDir, "sub", "pkg")
+	got := exec.remoteCwd(subdir)
+	if got != "/workspace/sub/pkg" {
+		t.Fatalf("remoteCwd() = %q, want /workspace/sub/pkg", got)
+	}
+}
+
+func TestBackendExecutorResultTargetOrbStackMachine(t *testing.T) {
+	cfg := config.DefaultRunConfig()
+	cfg.Backend.Kind = model.BackendKindOrbStackMachine
+	cfg.Platform.RunMode = model.RunModeLocalOrbStackMachine
+	cfg.Runtime.Profile = model.RuntimeProfileOrbStackMachine
+	cfg.OrbStack.MachineName = "ai-runner-dev"
+
+	exec, err := NewBackendExecutor(cfg, model.ExecutionTarget{Arch: "arm64"}, &fakeBackend{})
+	if err != nil {
+		t.Fatalf("NewBackendExecutor() error = %v", err)
+	}
+
+	target := exec.resultTarget("machine-sandbox")
+	if target.BackendProvider != "orbstack" {
+		t.Fatalf("BackendProvider = %q, want orbstack", target.BackendProvider)
+	}
+	if target.LocalPlatform != "orbstack" {
+		t.Fatalf("LocalPlatform = %q, want orbstack", target.LocalPlatform)
+	}
+	if target.MachineName != "ai-runner-dev" {
+		t.Fatalf("MachineName = %q, want ai-runner-dev", target.MachineName)
+	}
+	if target.RuntimeKind != "orbstack-machine" {
+		t.Fatalf("RuntimeKind = %q, want orbstack-machine", target.RuntimeKind)
 	}
 }
 

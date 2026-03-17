@@ -1,13 +1,13 @@
 run:
-  service_name: sandbox-runner-opensandbox-demo
-  mode: local
+  service_name: sandbox-runner-opensandbox-kata-demo
+  mode: stg
   run_id: ""
   attempt: 1
   sandbox_id: ""
   workspace_dir: .
   artifact_dir: .sandbox-runner
   otlp_endpoint: http://127.0.0.1:4318
-  deployment_environment: local
+  deployment_environment: stg
   command:
     - go
     - test
@@ -43,7 +43,7 @@ telemetry:
   emit_stderr_events: true
 
 collector:
-  mode: auto
+  mode: require
   healthcheck_timeout_ms: 1000
   local_collector_config: configs/otelcol.local.yaml
 
@@ -56,22 +56,22 @@ backend:
   kind: opensandbox
 
 runtime:
-  profile: native
+  profile: kata
 
 platform:
-  target_os: auto
-  target_arch: auto
-  run_mode: local_opensandbox_docker
+  target_os: linux
+  target_arch: amd64
+  run_mode: stg_opensandbox_k8s
   container_execution_mode: host-runner
   feature_gates:
     go_basic_runner: true
     go_manual_sdk: true
-    go_autosdk_bridge: false
-    obi_ebpf: false
+    go_autosdk_bridge: true
+    obi_ebpf: true
     k8s_operator_go_inject: false
-    local_docker_mode: true
+    local_docker_mode: false
     local_direct_mode: false
-    stg_linux_mode: false
+    stg_linux_mode: true
 
 sandbox:
   image: golang:1.24-alpine
@@ -85,7 +85,7 @@ sandbox:
 opensandbox:
   base_url: http://127.0.0.1:8080
   api_key: ""
-  runtime: docker
+  runtime: kubernetes
   network_mode: bridge
   create_timeout_sec: 120
   poll_interval_ms: 1000
@@ -101,17 +101,17 @@ provider:
   require_capabilities:
     - file_upload
     - stream_logs
+    - runtime_profile
   fallback_order:
     - opensandbox
-    - docker
-    - direct
+    - k8s
 
 kata:
-  enabled: false
+  enabled: true
   runtime_class_name: kata
   containerd_runtime: io.containerd.kata.v2
   require_hardware_virtualization: true
-  fail_if_unavailable: false
+  fail_if_unavailable: true
 
 devcontainer:
   cli_path: devcontainer
@@ -131,6 +131,6 @@ go:
   classify_commands: true
   detect_go_env: true
   manual_sdk_helper_enabled: true
-  autosdk_bridge_enabled: false
-  obi_enabled: false
+  autosdk_bridge_enabled: true
+  obi_enabled: true
   extra_env: {}

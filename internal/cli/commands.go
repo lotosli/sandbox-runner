@@ -135,9 +135,10 @@ func (c *K8sRenderCommand) Run(ctx context.Context) (int, error) {
 }
 
 type K8sSubmitCommand struct {
-	Opts       GlobalOptions
-	Namespace  string
-	Kubeconfig string
+	Opts        GlobalOptions
+	Namespace   string
+	Kubeconfig  string
+	KubeContext string
 }
 
 func (c *K8sSubmitCommand) Run(ctx context.Context) (int, error) {
@@ -150,7 +151,15 @@ func (c *K8sSubmitCommand) Run(ctx context.Context) (int, error) {
 	if err != nil {
 		return 1, err
 	}
-	submitter, err := sdk.NewSubmitter(c.Kubeconfig)
+	contextName := c.KubeContext
+	if contextName == "" {
+		contextName = req.RunConfig.K8s.Context
+	}
+	kubeconfig := c.Kubeconfig
+	if kubeconfig == "" {
+		kubeconfig = req.RunConfig.K8s.Kubeconfig
+	}
+	submitter, err := sdk.NewSubmitter(kubeconfig, contextName, req.RunConfig.K8s.Provider)
 	if err != nil {
 		return 1, err
 	}
@@ -170,7 +179,18 @@ type VersionCommand struct{}
 
 func (VersionCommand) Run(ctx context.Context) (int, error) {
 	_ = ctx
-	payload, err := json.MarshalIndent(versionInfo, "", "  ")
+	report := platform.DoctorReport("")
+	payload, err := json.MarshalIndent(struct {
+		model.VersionInfo
+		ExecutionTarget model.ExecutionTarget `json:"execution_target"`
+		FeatureGates    model.FeatureSet      `json:"feature_gates"`
+		Warnings        []string              `json:"warnings,omitempty"`
+	}{
+		VersionInfo:     versionInfo,
+		ExecutionTarget: report.ExecutionTarget,
+		FeatureGates:    report.FeatureGates,
+		Warnings:        report.Warnings,
+	}, "", "  ")
 	if err != nil {
 		return 1, err
 	}

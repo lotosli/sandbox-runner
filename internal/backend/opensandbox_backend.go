@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,7 +68,29 @@ func (b *OpenSandboxBackend) Capabilities(ctx context.Context) (model.BackendCap
 		SupportsBridgeNetwork:  true,
 		SupportsHostNetwork:    true,
 		SupportsCodeInterp:     true,
+		SupportsRuntimeProfile: true,
 	}, nil
+}
+
+func (b *OpenSandboxBackend) RuntimeInfo(ctx context.Context) (model.RuntimeInfo, error) {
+	_ = ctx
+	info := model.RuntimeInfo{
+		ProviderKind:     string(model.BackendKindOpenSandbox),
+		RuntimeProfile:   string(b.cfg.Runtime.Profile),
+		RuntimeClassName: b.cfg.Kata.RuntimeClassName,
+		ContainerRuntime: "opensandbox-" + string(b.cfg.OpenSandbox.Runtime),
+		HostOS:           runtime.GOOS,
+		HostArch:         runtime.GOARCH,
+		Available:        true,
+	}
+	if b.cfg.Runtime.Profile == model.RuntimeProfileKata {
+		info.Virtualization = "kata"
+		info.CheckedBy = "provider-capabilities"
+		info.Detail = "runtime profile request will be delegated to opensandbox provider"
+	} else {
+		info.Virtualization = "none"
+	}
+	return info, nil
 }
 
 func (b *OpenSandboxBackend) Create(ctx context.Context, req CreateSandboxRequest) (SandboxInfo, error) {
@@ -98,6 +121,19 @@ func (b *OpenSandboxBackend) Create(ctx context.Context, req CreateSandboxReques
 		Metadata:       req.Metadata,
 		Entrypoint:     nonEmptyEntrypoint(req.Entrypoint),
 		Extensions:     extensions,
+	}
+	if createReq.Metadata == nil {
+		createReq.Metadata = map[string]string{}
+	}
+	if b.cfg.Runtime.Profile != "" {
+		createReq.Metadata["runtime.profile"] = string(b.cfg.Runtime.Profile)
+	}
+	if b.cfg.Runtime.Profile == model.RuntimeProfileKata {
+		createReq.Metadata["runtime.class"] = b.cfg.Kata.RuntimeClassName
+		extensions["runtime.profile"] = string(model.RuntimeProfileKata)
+		if b.cfg.Kata.RuntimeClassName != "" {
+			extensions["runtime.class"] = b.cfg.Kata.RuntimeClassName
+		}
 	}
 	if req.CPU != "" {
 		createReq.ResourceLimits["cpu"] = req.CPU
@@ -671,7 +707,10 @@ func wrapProviderError(code model.ErrorCode, err error) error {
 
 func nonEmptyEntrypoint(entrypoint []string) []string {
 	if len(entrypoint) == 0 {
-		return []string{"/bin/sh", "-lc"}
+		return nil
+	}
+	if len(entrypoint) == 2 && (entrypoint[0] == "/bin/sh" || entrypoint[0] == "sh") && entrypoint[1] == "-lc" {
+		return nil
 	}
 	return entrypoint
 }

@@ -128,6 +128,73 @@ func TestOpenSandboxBackendMapsProviderErrors(t *testing.T) {
 	}
 }
 
+func TestOpenSandboxBackendCreatePropagatesKataRuntimeMetadata(t *testing.T) {
+	var payload map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/sandboxes" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "sbx-kata",
+			"status": map[string]any{
+				"state": "running",
+			},
+			"metadata": map[string]string{
+				"runtime.profile": "kata",
+				"runtime.class":   "kata",
+			},
+		})
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultRunConfig()
+	cfg.Backend.Kind = model.BackendKindOpenSandbox
+	cfg.Platform.RunMode = model.RunModeSTGOpenSandboxK8s
+	cfg.OpenSandbox.BaseURL = server.URL
+	cfg.OpenSandbox.Runtime = model.OpenSandboxRuntimeKubernetes
+	cfg.Runtime.Profile = model.RuntimeProfileKata
+	cfg.Kata.Enabled = true
+	cfg.Kata.RuntimeClassName = "kata"
+
+	backend := NewOpenSandboxBackend(cfg)
+	_, err := backend.Create(context.Background(), CreateSandboxRequest{
+		RunID:    "run-kata",
+		Attempt:  1,
+		Image:    "alpine:3.20",
+		Metadata: map[string]string{"run_id": "run-kata"},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	metadata, ok := payload["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("metadata = %#v, want map", payload["metadata"])
+	}
+	if metadata["runtime.profile"] != "kata" {
+		t.Fatalf("runtime.profile = %v, want kata", metadata["runtime.profile"])
+	}
+	if metadata["runtime.class"] != "kata" {
+		t.Fatalf("runtime.class = %v, want kata", metadata["runtime.class"])
+	}
+
+	extensions, ok := payload["extensions"].(map[string]any)
+	if !ok {
+		t.Fatalf("extensions = %#v, want map", payload["extensions"])
+	}
+	if extensions["runtime.profile"] != "kata" {
+		t.Fatalf("extensions runtime.profile = %v, want kata", extensions["runtime.profile"])
+	}
+	if extensions["runtime.class"] != "kata" {
+		t.Fatalf("extensions runtime.class = %v, want kata", extensions["runtime.class"])
+	}
+}
+
 func serverURLWithoutScheme(r *http.Request) string {
 	return r.Host + "/sandboxes/sbx-1/proxy/44772"
 }

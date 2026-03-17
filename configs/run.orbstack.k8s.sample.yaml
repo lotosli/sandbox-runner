@@ -1,0 +1,52 @@
+run:
+  service_name: sandbox-runner-orbstack-k8s-demo
+  mode: stg
+  run_id: ""
+  attempt: 1
+  sandbox_id: stg-orbstack-k8s
+  workspace_dir: .
+  artifact_dir: .sandbox-runner
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - go
+    - test
+    - ./...
+  language: auto
+  image: ghcr.io/lotosli/sandbox-runner:latest
+
+backend:
+  kind: k8s
+
+runtime:
+  profile: orbstack-k8s
+
+platform:
+  target_os: auto
+  target_arch: auto
+  run_mode: stg_linux
+  container_execution_mode: host-runner
+  feature_gates:
+    go_basic_runner: true
+    go_manual_sdk: true
+    go_autosdk_bridge: false
+    obi_ebpf: false
+    k8s_operator_go_inject: false
+    local_docker_mode: false
+    local_direct_mode: false
+    stg_linux_mode: true
+    local_apple_container_mode: false
+    local_orbstack_machine_mode: false
+
+k8s:
+  provider: orbstack-local
+  kubeconfig: ~/.kube/config
+  context: orbstack
+  namespace: ai-sandbox-runner-runs
+
+orbstack:
+  enabled: true
+  k8s_provider_enabled: true
+  kube_context: orbstack
+  orb_binary: orb
+  orbctl_binary: orbctl

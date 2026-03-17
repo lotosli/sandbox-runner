@@ -243,15 +243,54 @@ func commonAttrs(cfg model.RunConfig, phase model.Phase) []attribute.KeyValue {
 		attribute.String("phase", string(phase)),
 	}
 	if cfg.Backend.Kind != "" {
-		attrs = append(attrs, attribute.String("sandbox.backend.kind", string(cfg.Backend.Kind)))
+		attrs = append(attrs,
+			attribute.String("backend.kind", string(cfg.Backend.Kind)),
+			attribute.String("sandbox.backend.kind", string(cfg.Backend.Kind)),
+		)
+	}
+	if cfg.Runtime.Profile != "" {
+		attrs = append(attrs,
+			attribute.String("runtime.profile", string(cfg.Runtime.Profile)),
+			attribute.String("sandbox.runtime.profile", string(cfg.Runtime.Profile)),
+			attribute.String("sandbox.runtime.class", cfg.Kata.RuntimeClassName),
+		)
+		attrs = append(attrs, attribute.String("sandbox.virtualization", telemetryVirtualization(cfg.Runtime.Profile)))
+	}
+	if cfg.Backend.Kind == model.BackendKindDevContainer {
+		attrs = append(attrs,
+			attribute.String("devcontainer.workspace_folder", cfg.DevContainer.WorkspaceFolder),
+			attribute.String("devcontainer.config_path", cfg.DevContainer.ConfigPath),
+		)
+	}
+	if provider := telemetryBackendProvider(cfg); provider != "" {
+		attrs = append(attrs,
+			attribute.String("backend.provider", provider),
+			attribute.String("sandbox.provider.name", providerForTelemetry(cfg)),
+		)
+	}
+	if platform := telemetryLocalPlatform(cfg); platform != "" {
+		attrs = append(attrs, attribute.String("local.platform", platform))
+	}
+	if cfg.Backend.Kind == model.BackendKindOrbStackMachine && cfg.OrbStack.MachineName != "" {
+		attrs = append(attrs, attribute.String("machine.name", cfg.OrbStack.MachineName))
+	}
+	if cfg.Backend.Kind != model.BackendKindOrbStackMachine && cfg.Run.SandboxID != "" {
+		attrs = append(attrs, attribute.String("container.id", cfg.Run.SandboxID))
 	}
 	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
 		attrs = append(attrs,
-			attribute.String("sandbox.provider.name", "opensandbox"),
 			attribute.String("sandbox.runtime.kind", string(cfg.OpenSandbox.Runtime)),
 			attribute.String("sandbox.network.mode", cfg.OpenSandbox.NetworkMode),
 			attribute.Bool("sandbox.ttl.enabled", cfg.OpenSandbox.TTLSec > 0),
 		)
+	} else if cfg.Backend.Kind == model.BackendKindDevContainer {
+		attrs = append(attrs,
+			attribute.String("sandbox.runtime.kind", "devcontainer"),
+		)
+	} else if cfg.Backend.Kind == model.BackendKindAppleContainer {
+		attrs = append(attrs, attribute.String("sandbox.runtime.kind", "apple-container"))
+	} else if cfg.Backend.Kind == model.BackendKindOrbStackMachine {
+		attrs = append(attrs, attribute.String("sandbox.runtime.kind", "orbstack-machine"))
 	}
 	return attrs
 }
@@ -295,6 +334,66 @@ func severityForStream(stream string) otellog.Severity {
 		return otellog.SeverityWarn
 	default:
 		return otellog.SeverityInfo
+	}
+}
+
+func telemetryBackendProvider(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindDirect:
+		return "native"
+	case model.BackendKindDocker:
+		if cfg.Docker.Provider == model.DockerProviderOrbStack {
+			return "orbstack"
+		}
+		return "docker"
+	case model.BackendKindK8s:
+		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
+			return "orbstack"
+		}
+		return "k8s"
+	case model.BackendKindOrbStackMachine:
+		return "orbstack"
+	default:
+		return string(cfg.Backend.Kind)
+	}
+}
+
+func providerForTelemetry(cfg model.RunConfig) string {
+	switch cfg.Backend.Kind {
+	case model.BackendKindOpenSandbox:
+		return "opensandbox"
+	case model.BackendKindDevContainer:
+		return "devcontainer"
+	default:
+		return telemetryBackendProvider(cfg)
+	}
+}
+
+func telemetryLocalPlatform(cfg model.RunConfig) string {
+	switch {
+	case cfg.Backend.Kind == model.BackendKindAppleContainer:
+		return "macos"
+	case cfg.Backend.Kind == model.BackendKindOrbStackMachine:
+		return "orbstack"
+	case cfg.Backend.Kind == model.BackendKindDocker && cfg.Docker.Provider == model.DockerProviderOrbStack:
+		return "orbstack"
+	case cfg.Backend.Kind == model.BackendKindK8s && cfg.K8s.Provider == model.K8sProviderOrbStackLocal:
+		return "orbstack"
+	default:
+		return ""
+	}
+}
+
+func telemetryVirtualization(profile model.RuntimeProfile) string {
+	switch profile {
+	case model.RuntimeProfileKata:
+		return "kata"
+	case model.RuntimeProfileAppleContainer:
+		return "apple-container"
+	case model.RuntimeProfileOrbStackMachine:
+		return "vm"
+	default:
+		return "none"
 	}
 }
 
