@@ -167,20 +167,6 @@ These integrations do not change the run semantic layer. They only replace or ex
 - Prefer `docker(provider=orbstack)` for standard Docker / Compose-oriented workflows.
 - Prefer `k8s(provider=orbstack-local)` for local single-node K8s validation.
 
-## Dev Container CLI and Kata
-
-- When `backend.kind=devcontainer`, the Runner maps the backend lifecycle to `devcontainer read-configuration`, `devcontainer up`, `devcontainer exec`, and `devcontainer down`.
-- `devcontainer exec` reuses the existing command model, stdout / stderr streaming pipeline, timeout handling, and artifact chain instead of introducing a second execution protocol.
-- `provider.json` carries the devcontainer summary, while `devcontainer.json` stores the resolved summary rather than a raw copy of the source file.
-- When `runtime.profile=kata`, the Runner performs runtime negotiation in the `prepare` phase and writes runtime metadata into `runtime.json`, `sandbox.json`, and OTel attributes.
-- `k8s + kata` writes `spec.runtimeClassName` into Job / Pod templates.
-- `opensandbox + kata` passes `runtime.profile` / `runtime.class` through provider metadata.
-- The first release does **not** support:
-  - `direct + kata`
-  - `docker + kata`
-  - `devcontainer + kata`
-  - `opensandbox + devcontainer`
-- If the `devcontainer` CLI is not available in the current shell `PATH`, configure `devcontainer.cli_path` explicitly.
 
 ## Platform Rules and Feature Gates
 
@@ -216,15 +202,6 @@ The Runner trims capabilities automatically based on platform and execution cont
 - macOS and Windows primarily provide Layer A run-level observability and do not guarantee Linux kernel-level enhancements.
 - Linux and STG can layer in OBI / eBPF / Auto SDK bridge when permissions and runtime conditions allow.
 
-## OpenSandbox Compatibility
-
-When `backend.kind=opensandbox`, the Runner preserves the same run / phase / artifact / replay model.
-
-- The `prepare` phase handles capability negotiation, sandbox create/start, and workspace tar sync-in.
-- The `execute` and `verify` phases run commands through the in-sandbox execd API while collecting stdout / stderr.
-- The `collect` phase emits `provider.json`, `sandbox.json`, and `endpoints.json`, then applies cleanup policy using `delete`, `pause`, or `keep`.
-- Provider failures are normalized into `RunnerError` while preserving provider-specific codes.
-- When `runtime.profile=kata`, runtime requests are passed through provider metadata and recorded in `runtime.json`.
 
 ## Example Configs
 
@@ -267,76 +244,6 @@ make build
 make dist
 ```
 
-`make dist` currently produces:
-
-- `dist/sandbox-runner-darwin-amd64`
-- `dist/sandbox-runner-darwin-arm64`
-- `dist/sandbox-runner-linux-amd64`
-- `dist/sandbox-runner-linux-arm64`
-- `dist/sandbox-runner-linux-arm-v7`
-- `dist/sandbox-runner-windows-amd64.exe`
-- `dist/sandbox-runner-windows-arm64.exe`
-- `dist/SHA256SUMS`
-
-`--version` includes:
-
-- `version`
-- `git_sha`
-- `build_time`
-- `target_os`
-- `target_arch`
-- `execution_target`
-- `feature_gates`
-
-## Test
-
-```bash
-go test ./...
-go test ./tests/contract/...
-go test ./tests/integration/...
-```
-
-### Test Notes
-
-- DevContainer backend unit tests use a fake CLI and do not require a real local `devcontainer` installation.
-- End-to-end DevContainer validation requires a local `devcontainer` CLI and a working Docker daemon.
-- Apple `container` integration requires macOS arm64 with the `container` CLI installed.
-- OrbStack Docker / Machine / K8s integration requires OrbStack on macOS.
-- OpenSandbox integration tests require a local `opensandbox-server` and a working Docker daemon.
-- Integration tests are skipped automatically when Docker is unavailable, or when the local OpenSandbox version does not match the fixture schema.
-
-## Public Packages
-
-- `github.com/lotosli/sandbox-runner/pkg/sdk`
-- `github.com/lotosli/sandbox-runner/pkg/helper`
-
-## Repository Layout
-
-```text
-cmd/sandbox-runner/
-internal/
-  adapter/
-  artifact/
-  backend/
-  cli/
-  collector/
-  config/
-  envsync/
-  executor/
-  kubernetes/
-  opensandbox/
-  phase/
-  platform/
-  policy/
-  proc/
-  telemetry/
-pkg/
-  helper/
-  sdk/
-configs/
-deployments/
-tests/
-```
 
 ## Important Notes
 
