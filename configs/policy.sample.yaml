@@ -1,0 +1,59 @@
+filesystem:
+  read_allow:
+    - /workspace
+    - /tmp
+  write_allow:
+    - /workspace
+    - /tmp
+    - /workspace/.sandbox-run
+  deny:
+    - /root/.ssh
+    - /workspace/.env
+    - /workspace/secrets
+
+network_profiles:
+  setup-online:
+    allow_domains:
+      - pypi.org
+      - files.pythonhosted.org
+      - registry.npmjs.org
+      - repo.maven.apache.org
+  execute-offline:
+    allow_domains: []
+  verify-internal:
+    allow_domains:
+      - stg-api.company.internal
+      - stg-auth.company.internal
+
+tools:
+  allow:
+    - go
+    - python
+    - pytest
+    - node
+    - npm
+    - pnpm
+    - java
+    - mvn
+    - bash
+    - sh
+    - curl
+    - dlv
+  deny_patterns:
+    - "rm -rf /"
+    - "curl * | sh"
+    - "wget * | sh"
+
+secrets:
+  inject_env:
+    - name: ARTIFACT_TOKEN
+      phase_allow: [collect]
+    - name: PYPI_TOKEN
+      phase_allow: [setup]
+  deny_export_to_logs: true
+
+resources:
+  timeout_sec_default: 1800
+  max_memory_mb: 4096
+  max_log_bytes: 104857600
+  max_artifact_bytes: 536870912

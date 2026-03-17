@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: sandbox-run-{{RUN_ID}}
+  namespace: ai-sandbox-runs
+  labels:
+    app: sandbox-runner
+    run_id: "{{RUN_ID}}"
+    attempt: "{{ATTEMPT}}"
+spec:
+  ttlSecondsAfterFinished: 1800
+  backoffLimit: 0
+  template:
+    metadata:
+      labels:
+        app: sandbox-runner
+        run_id: "{{RUN_ID}}"
+        attempt: "{{ATTEMPT}}"
+    spec:
+      restartPolicy: Never
+      serviceAccountName: sandbox-runner
+      containers:
+        - name: runner
+          image: registry.company.internal/ai/sandbox-runner:latest
+          command: ["/usr/local/bin/sandbox-run", "run", "--config", "/etc/sandbox/run.yaml", "--policy", "/etc/sandbox/policy.yaml", "--", "pytest", "-q"]
+          env:
+            - name: RUN_ID
+              value: "{{RUN_ID}}"
+            - name: ATTEMPT
+              value: "{{ATTEMPT}}"
+            - name: SANDBOX_ID
+              value: "{{SANDBOX_ID}}"
+          volumeMounts:
+            - name: workspace
+              mountPath: /workspace
+            - name: run-config
+              mountPath: /etc/sandbox
+      volumes:
+        - name: workspace
+          emptyDir: {}
+        - name: run-config
+          configMap:
+            name: sandbox-runner-config

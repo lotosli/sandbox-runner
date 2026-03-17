@@ -1,0 +1,114 @@
+run:
+  service_name: sandbox-runner-demo
+  mode: local
+  run_id: ""
+  attempt: 1
+  sandbox_id: local-dev
+  workspace_dir: .
+  artifact_dir: .sandbox-run
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - go
+    - test
+    - ./...
+  language: auto
+  image: golang:1.24-alpine
+
+phases:
+  prepare:
+    enabled: true
+    timeout_sec: 60
+  setup:
+    enabled: true
+    timeout_sec: 900
+    network_profile: setup-online
+  execute:
+    enabled: true
+    timeout_sec: 1800
+    network_profile: execute-offline
+  verify:
+    enabled: true
+    timeout_sec: 300
+    smoke_command:
+      - go
+      - test
+      - ./examples/go-http-service/...
+  collect:
+    enabled: true
+    timeout_sec: 120
+
+telemetry:
+  traces: true
+  logs: true
+  metrics: true
+  log_line_max_bytes: 8192
+  emit_stdout_events: true
+  emit_stderr_events: true
+
+collector:
+  mode: auto
+  healthcheck_timeout_ms: 1000
+  local_collector_config: configs/otelcol.local.yaml
+
+artifacts:
+  upload: false
+  object_prefix: sandbox-runs/
+  backend: local
+
+backend:
+  kind: direct
+
+platform:
+  target_os: auto
+  target_arch: auto
+  run_mode: local_direct
+  container_execution_mode: host-runner
+  feature_gates:
+    go_basic_runner: true
+    go_manual_sdk: true
+    go_autosdk_bridge: false
+    obi_ebpf: false
+    k8s_operator_go_inject: false
+    local_docker_mode: false
+    local_direct_mode: true
+    stg_linux_mode: false
+
+sandbox:
+  image: golang:1.24-alpine
+  entrypoint:
+    - /bin/sh
+    - -lc
+  env: {}
+  cpu: "2"
+  memory: 4Gi
+
+opensandbox:
+  base_url: http://127.0.0.1:8080
+  api_key: ""
+  runtime: docker
+  network_mode: bridge
+  create_timeout_sec: 120
+  poll_interval_ms: 1000
+  cleanup_mode: delete
+  ttl_sec: 1800
+  renew_on_long_run: true
+  workspace_root: /workspace
+  upload_strategy: tar
+  download_strategy: tar
+
+provider:
+  prefer_opensandbox: false
+  require_capabilities: []
+  fallback_order:
+    - opensandbox
+    - docker
+    - direct
+
+go:
+  classify_commands: true
+  detect_go_env: true
+  manual_sdk_helper_enabled: true
+  autosdk_bridge_enabled: false
+  obi_enabled: false
+  extra_env: {}
