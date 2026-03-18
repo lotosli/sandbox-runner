@@ -25,8 +25,9 @@ func LoadRunConfig(path string) (model.RunConfig, error) {
 	if err := yaml.Unmarshal(data, &cfg); err != nil {
 		return model.RunConfig{}, fmt.Errorf("parse run config: %w", err)
 	}
+	baseDir := configBaseDir(path)
 	cfg = applyRunEnvOverrides(cfg)
-	cfg = normalizeRunConfig(cfg)
+	cfg = normalizeRunConfigWithBase(cfg, baseDir)
 	return cfg, ValidateRunConfig(cfg)
 }
 
@@ -115,11 +116,16 @@ func applyRunEnvOverrides(cfg model.RunConfig) model.RunConfig {
 }
 
 func normalizeRunConfig(cfg model.RunConfig) model.RunConfig {
-	cfg.Run.WorkspaceDir = cleanPath(cfg.Run.WorkspaceDir)
-	cfg.Run.ArtifactDir = cleanPath(cfg.Run.ArtifactDir)
-	cfg.DevContainer.ConfigPath = cleanPath(cfg.DevContainer.ConfigPath)
-	cfg.DevContainer.WorkspaceFolder = cleanPath(cfg.DevContainer.WorkspaceFolder)
-	cfg.K8s.Kubeconfig = cleanPath(cfg.K8s.Kubeconfig)
+	return normalizeRunConfigWithBase(cfg, "")
+}
+
+func normalizeRunConfigWithBase(cfg model.RunConfig, baseDir string) model.RunConfig {
+	cfg.Run.WorkspaceDir = cleanPathFromBase(cfg.Run.WorkspaceDir, baseDir)
+	cfg.Run.ArtifactDir = cleanPathFromBase(cfg.Run.ArtifactDir, baseDir)
+	cfg.Collector.LocalCollectorConfig = cleanPathFromBase(cfg.Collector.LocalCollectorConfig, baseDir)
+	cfg.DevContainer.ConfigPath = cleanPathFromBase(cfg.DevContainer.ConfigPath, baseDir)
+	cfg.DevContainer.WorkspaceFolder = cleanPathFromBase(cfg.DevContainer.WorkspaceFolder, baseDir)
+	cfg.K8s.Kubeconfig = cleanPathFromBase(cfg.K8s.Kubeconfig, baseDir)
 	cfg = normalizeExecutionConfig(cfg)
 	inferredKind := inferBackendKind(cfg.Platform.RunMode)
 	if cfg.Backend.Kind == "" || cfg.Backend.Kind == model.BackendKindDirect && inferredKind != model.BackendKindDirect {
@@ -238,4 +244,27 @@ func cleanPath(path string) string {
 		}
 	}
 	return filepath.Clean(path)
+}
+
+func cleanPathFromBase(path, baseDir string) string {
+	path = cleanPath(path)
+	if path == "" || baseDir == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Clean(filepath.Join(baseDir, path))
+}
+
+func configBaseDir(path string) string {
+	if path == "" {
+		return ""
+	}
+	baseDir := filepath.Dir(path)
+	if filepath.IsAbs(baseDir) {
+		return filepath.Clean(baseDir)
+	}
+	absBaseDir, err := filepath.Abs(baseDir)
+	if err != nil {
+		return filepath.Clean(baseDir)
+	}
+	return filepath.Clean(absBaseDir)
 }

@@ -699,22 +699,6 @@ func (e Engine) runCollect(ctx context.Context, state *runState) error {
 		}
 	}
 
-	refs, err := state.writer.ArtifactRefs()
-	if err != nil {
-		return e.failPhase(phaseCtx, state, model.PhaseCollect, started, model.ErrorCodeCollectFailed, err)
-	}
-	uploadRefs := makeUploadRefs(state.writer.Root(), refs)
-	uploadedRefs, uploadErr := state.uploader.Upload(phaseCtx, uploadRefs, state.req.RunConfig.Artifacts, state.req.RunConfig.Run.DeploymentEnvironment, state.req.RunConfig.Run.RunID, state.req.RunConfig.Run.Attempt)
-	state.result.Artifacts = mergeUploadedRefs(refs, uploadedRefs)
-	if uploadErr != nil {
-		state.result.Metadata["artifact_upload_error"] = uploadErr.Error()
-		if state.result.Status == model.StatusSucceeded {
-			state.result.Status = model.StatusPartial
-			state.result.ErrorCode = model.ErrorCodeArtifactUploadFailed
-			state.result.ErrorMessage = uploadErr.Error()
-		}
-	}
-
 	replay := model.ReplayManifest{
 		RunID:                     state.req.RunConfig.Run.RunID,
 		EnvironmentFingerprintRef: artifact.EnvironmentFileName,
@@ -733,7 +717,7 @@ func (e Engine) runCollect(ctx context.Context, state *runState) error {
 		return e.failPhase(phaseCtx, state, model.PhaseCollect, started, model.ErrorCodeCollectFailed, err)
 	}
 
-	collectResult := successPhase(model.PhaseCollect, started, map[string]any{"artifacts": len(refs)})
+	collectResult := successPhase(model.PhaseCollect, started, map[string]any{"artifacts": 0})
 	collectResult.BackendAction = cleanupActionForBackend(cfg)
 	state.phaseResults = append(state.phaseResults, collectResult)
 	state.result.Phase = model.PhaseCollect
@@ -747,6 +731,49 @@ func (e Engine) runCollect(ctx context.Context, state *runState) error {
 	}
 	if err := state.writer.WriteResults(state.result); err != nil {
 		return e.failPhase(phaseCtx, state, model.PhaseCollect, started, model.ErrorCodeCollectFailed, err)
+	}
+	if err := state.writer.WriteIndex(buildArtifactIndex(state, nil)); err != nil {
+		return e.failPhase(phaseCtx, state, model.PhaseCollect, started, model.ErrorCodeCollectFailed, err)
+	}
+
+	refs, err := state.writer.ArtifactRefs()
+	if err != nil {
+		return e.failPhase(phaseCtx, state, model.PhaseCollect, started, model.ErrorCodeCollectFailed, err)
+	}
+	uploadRefs := makeUploadRefs(state.writer.Root(), refs)
+	uploadedRefs, uploadErr := state.uploader.Upload(phaseCtx, uploadRefs, state.req.RunConfig.Artifacts, state.req.RunConfig.Run.DeploymentEnvironment, state.req.RunConfig.Run.RunID, state.req.RunConfig.Run.Attempt)
+	finalRefs := mergeUploadedRefs(state.writer.Root(), refs, uploadedRefs)
+	state.result.Artifacts = finalRefs
+	collectResult.Metadata["artifacts"] = len(finalRefs)
+	state.phaseResults[len(state.phaseResults)-1] = collectResult
+	if uploadErr != nil {
+		state.result.Metadata["artifact_upload_error"] = uploadErr.Error()
+		if state.result.Status == model.StatusSucceeded {
+			state.result.Status = model.StatusPartial
+			state.result.ErrorCode = model.ErrorCodeArtifactUploadFailed
+			state.result.ErrorMessage = uploadErr.Error()
+		}
+	}
+
+	if err := state.writer.WriteResults(state.result); err != nil {
+		return e.failPhase(phaseCtx, state, model.PhaseCollect, started, model.ErrorCodeCollectFailed, err)
+	}
+	if err := state.writer.WriteIndex(buildArtifactIndex(state, finalRefs)); err != nil {
+		return e.failPhase(phaseCtx, state, model.PhaseCollect, started, model.ErrorCodeCollectFailed, err)
+	}
+	if uploadErr == nil && state.req.RunConfig.Artifacts.Upload {
+		if _, err := state.uploader.Upload(phaseCtx, makeUploadRefs(state.writer.Root(), filterArtifactRefs(finalRefs, artifact.ResultsFileName, artifact.IndexFileName)), state.req.RunConfig.Artifacts, state.req.RunConfig.Run.DeploymentEnvironment, state.req.RunConfig.Run.RunID, state.req.RunConfig.Run.Attempt); err != nil {
+			state.result.Metadata["artifact_summary_upload_error"] = err.Error()
+			if state.result.Status == model.StatusSucceeded {
+				state.result.Status = model.StatusPartial
+				state.result.ErrorCode = model.ErrorCodeArtifactUploadFailed
+				state.result.ErrorMessage = err.Error()
+			}
+			_ = state.writer.WriteResults(state.result)
+			_ = state.writer.WriteIndex(buildArtifactIndex(state, finalRefs))
+			e.endPhase(state, phaseCtx, model.PhaseCollect, state.phaseResults[len(state.phaseResults)-1])
+			return err
+		}
 	}
 	e.endPhase(state, phaseCtx, model.PhaseCollect, state.phaseResults[len(state.phaseResults)-1])
 	return uploadErr
@@ -1519,12 +1546,113 @@ func makeUploadRefs(root string, refs []model.ArtifactRef) []model.ArtifactRef {
 	return out
 }
 
-func mergeUploadedRefs(refs []model.ArtifactRef, uploaded []model.ArtifactRef) []model.ArtifactRef {
+func mergeUploadedRefs(root string, refs []model.ArtifactRef, uploaded []model.ArtifactRef) []model.ArtifactRef {
 	out := make([]model.ArtifactRef, len(refs))
 	copy(out, refs)
+	uriByAbsPath := map[string]string{}
+	for _, ref := range uploaded {
+		if ref.URI == "" {
+			continue
+		}
+		uriByAbsPath[filepath.Clean(ref.Path)] = ref.URI
+	}
 	for i := range out {
-		if i < len(uploaded) {
-			out[i].URI = uploaded[i].URI
+		absPath := filepath.Clean(filepath.Join(root, out[i].Path))
+		if uri, ok := uriByAbsPath[absPath]; ok {
+			out[i].URI = uri
+		}
+	}
+	return out
+}
+
+func filterArtifactRefs(refs []model.ArtifactRef, paths ...string) []model.ArtifactRef {
+	allow := map[string]struct{}{}
+	for _, path := range paths {
+		allow[path] = struct{}{}
+	}
+	out := make([]model.ArtifactRef, 0, len(paths))
+	for _, ref := range refs {
+		if _, ok := allow[ref.Path]; ok {
+			out = append(out, ref)
+		}
+	}
+	return out
+}
+
+func buildArtifactIndex(state *runState, refs []model.ArtifactRef) model.ArtifactIndex {
+	files := map[string]string{}
+	for _, ref := range refs {
+		switch ref.Path {
+		case artifact.IndexFileName:
+			files["index"] = ref.Path
+		case artifact.ResultsFileName:
+			files["results"] = ref.Path
+		case artifact.PhasesFileName:
+			files["phases"] = ref.Path
+		case artifact.ReplayFileName:
+			files["replay"] = ref.Path
+		case artifact.CommandsFileName:
+			files["commands"] = ref.Path
+		case artifact.StdoutFileName:
+			files["stdout"] = ref.Path
+		case artifact.StderrFileName:
+			files["stderr"] = ref.Path
+		case artifact.ContextFileName:
+			files["context"] = ref.Path
+		case artifact.EnvironmentFileName:
+			files["environment"] = ref.Path
+		case artifact.SetupPlanFileName:
+			files["setup_plan"] = ref.Path
+		case artifact.ProviderFileName:
+			files["provider"] = ref.Path
+		case artifact.RuntimeFileName:
+			files["runtime"] = ref.Path
+		case artifact.BackendProfileFileName:
+			files["backend_profile"] = ref.Path
+		case artifact.SandboxFileName:
+			files["sandbox"] = ref.Path
+		case artifact.DevContainerFileName:
+			files["devcontainer"] = ref.Path
+		case artifact.EndpointsFileName:
+			files["endpoints"] = ref.Path
+		case artifact.MachineFileName:
+			files["machine"] = ref.Path
+		case artifact.ContainerFileName:
+			files["container"] = ref.Path
+		}
+	}
+	if len(files) == 0 {
+		files["index"] = artifact.IndexFileName
+		files["results"] = artifact.ResultsFileName
+		files["phases"] = artifact.PhasesFileName
+		files["replay"] = artifact.ReplayFileName
+		files["commands"] = artifact.CommandsFileName
+		files["stdout"] = artifact.StdoutFileName
+		files["stderr"] = artifact.StderrFileName
+		files["context"] = artifact.ContextFileName
+	}
+	return model.ArtifactIndex{
+		SchemaVersion:      1,
+		RunID:              state.result.RunID,
+		Attempt:            state.result.Attempt,
+		Status:             state.result.Status,
+		Phase:              state.result.Phase,
+		ExitCode:           state.result.ExitCode,
+		CommandClass:       state.result.CommandClass,
+		Execution:          state.resolution.Config,
+		CompatibilityLevel: state.resolution.Compatibility.Level,
+		SuggestedReadOrder: artifactIndexReadOrder(files),
+		Files:              files,
+		Artifacts:          refs,
+	}
+}
+
+func artifactIndexReadOrder(files map[string]string) []string {
+	order := []string{"index", "results", "phases", "commands", "stdout", "stderr", "replay", "context", "environment", "setup_plan", "provider", "runtime", "backend_profile", "sandbox", "devcontainer", "endpoints", "machine", "container"}
+	out := make([]string, 0, len(order))
+	for _, key := range order {
+		if files[key] != "" {
+			out = append(out, key)
 		}
 	}
 	return out

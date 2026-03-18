@@ -4,8 +4,8 @@ run:
   run_id: ""
   attempt: 1
   sandbox_id: ""
-  workspace_dir: .
-  artifact_dir: .sandbox-runner
+  workspace_dir: ..
+  artifact_dir: ../.sandbox-runner
   otlp_endpoint: http://127.0.0.1:4318
   deployment_environment: local
   command:
@@ -44,7 +44,7 @@ telemetry:
 collector:
   mode: auto
   healthcheck_timeout_ms: 1000
-  local_collector_config: configs/otelcol.local.yaml
+  local_collector_config: otelcol.local.yaml
 
 artifacts:
   upload: false
@@ -118,7 +118,7 @@ kata:
 devcontainer:
   cli_path: devcontainer
   workspace_folder: .
-  config_path: .devcontainer/devcontainer.json
+  config_path: ../.devcontainer/devcontainer.json
   mount_workspace_git_root: true
   remove_existing_container: false
   skip_post_create: false

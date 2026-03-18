@@ -73,12 +73,14 @@ func Parse(args []string) (App, error) {
 func parseRunCommand(args []string) *RunCommand {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	opts := GlobalOptions{}
+	jsonSummary := fs.Bool("json-summary", false, "Print machine-readable JSON summary after run")
 	fs.StringVar(&opts.ConfigPath, "config", "", "Path to run config")
 	fs.StringVar(&opts.PolicyPath, "policy", "", "Path to policy config")
 	_ = fs.Parse(args)
 	return &RunCommand{
-		Args: fs.Args(),
-		Opts: opts,
+		Args:        fs.Args(),
+		Opts:        opts,
+		JSONSummary: *jsonSummary,
 	}
 }
 
@@ -87,13 +89,15 @@ func parseDockerCommand(args []string) *DockerCommand {
 	opts := GlobalOptions{}
 	image := fs.String("image", "", "Docker image")
 	mode := fs.String("mode", string(model.ContainerExecutionHostRunner), "Docker execution mode")
+	jsonSummary := fs.Bool("json-summary", false, "Print machine-readable JSON summary after run")
 	fs.StringVar(&opts.ConfigPath, "config", "", "Path to run config")
 	fs.StringVar(&opts.PolicyPath, "policy", "", "Path to policy config")
 	_ = fs.Parse(args)
 	return &DockerCommand{
 		RunCommand: RunCommand{
-			Args: fs.Args(),
-			Opts: opts,
+			Args:        fs.Args(),
+			Opts:        opts,
+			JSONSummary: *jsonSummary,
 		},
 		Image:                  *image,
 		ContainerExecutionMode: model.ContainerExecutionMode(*mode),

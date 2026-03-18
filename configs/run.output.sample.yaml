@@ -1,0 +1,86 @@
+run:
+  service_name: sandbox-runner-output-demo
+  mode: local
+  run_id: ""
+  attempt: 1
+  sandbox_id: local-dev
+  workspace_dir: ..
+  artifact_dir: ../.sandbox-runner-output
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - sh
+    - -lc
+    - echo "sandbox-runner stdout demo"; echo "sandbox-runner stderr demo" >&2; pwd
+  language: auto
+
+phases:
+  prepare:
+    enabled: true
+    timeout_sec: 60
+  setup:
+    enabled: false
+    timeout_sec: 60
+  execute:
+    enabled: true
+    timeout_sec: 60
+    network_profile: execute-offline
+  verify:
+    enabled: false
+    timeout_sec: 60
+  collect:
+    enabled: true
+    timeout_sec: 60
+
+telemetry:
+  traces: true
+  logs: true
+  metrics: true
+  log_line_max_bytes: 8192
+  emit_stdout_events: true
+  emit_stderr_events: true
+
+collector:
+  mode: auto
+  healthcheck_timeout_ms: 1000
+  local_collector_config: otelcol.local.yaml
+
+artifacts:
+  upload: false
+  object_prefix: sandbox-runner-runs/
+  backend: local
+
+execution:
+  backend: direct
+  provider: native
+  runtime_profile: default
+
+backend:
+  kind: direct
+
+runtime:
+  profile: native
+
+platform:
+  target_os: auto
+  target_arch: auto
+  run_mode: local_direct
+  container_execution_mode: host-runner
+  feature_gates:
+    go_basic_runner: true
+    go_manual_sdk: true
+    go_autosdk_bridge: false
+    obi_ebpf: false
+    k8s_operator_go_inject: false
+    local_docker_mode: false
+    local_direct_mode: true
+    stg_linux_mode: false
+
+sandbox:
+  env: {}
+
+provider:
+  prefer_opensandbox: false
+  require_capabilities: []
+  fallback_order:
+    - direct
