@@ -5,3 +5,5 @@ sandbox-run
 sandbox-run.exe
 sandbox-runner
 sandbox-runner.exe
+!/cmd/sandbox-runner/
+!/cmd/sandbox-runner/**

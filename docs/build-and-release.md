@@ -47,6 +47,7 @@ Workflow file:
 Behavior:
 
 - runs on `push`, `pull_request`, and `workflow_dispatch`
+- uses Node 24-ready official GitHub actions (`actions/checkout@v6`, `actions/setup-go@v6`, `actions/upload-artifact@v6`)
 - executes `go test ./...`
 - executes `make dist`
 - uploads the generated `dist/` outputs as the `sandbox-runner-dist` workflow artifact
