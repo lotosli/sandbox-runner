@@ -56,6 +56,9 @@ func New(ctx context.Context, cfg model.RunConfig, enabled bool) (*Emitter, erro
 		attribute.String("run_id", cfg.Run.RunID),
 		attribute.Int("attempt", cfg.Run.Attempt),
 		attribute.String("sandbox_id", cfg.Run.SandboxID),
+		attribute.String("execution.backend", string(cfg.Execution.Backend)),
+		attribute.String("execution.provider", string(cfg.Execution.Provider)),
+		attribute.String("execution.runtime_profile", string(cfg.Execution.RuntimeProfile)),
 	)
 
 	var (
@@ -241,6 +244,16 @@ func commonAttrs(cfg model.RunConfig, phase model.Phase) []attribute.KeyValue {
 		attribute.Int("attempt", cfg.Run.Attempt),
 		attribute.String("sandbox_id", cfg.Run.SandboxID),
 		attribute.String("phase", string(phase)),
+	}
+	if cfg.Execution.Backend != "" {
+		attrs = append(attrs,
+			attribute.String("execution.backend", string(cfg.Execution.Backend)),
+			attribute.String("execution.provider", string(cfg.Execution.Provider)),
+			attribute.String("execution.runtime_profile", string(cfg.Execution.RuntimeProfile)),
+		)
+	}
+	if level := cfg.Metadata["execution.compatibility_level"]; level != "" {
+		attrs = append(attrs, attribute.String("execution.compatibility_level", level))
 	}
 	if cfg.Backend.Kind != "" {
 		attrs = append(attrs,

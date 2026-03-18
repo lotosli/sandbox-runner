@@ -187,22 +187,24 @@ func (e DockerExecutor) Run(ctx context.Context, spec Spec, handler proc.IOHandl
 		StdoutLines: stdoutWriter.lines,
 		StderrLines: stderrWriter.lines,
 		Target: model.ExecutionTarget{
-			OS:              "linux",
-			Arch:            spec.Target.Arch,
-			Mode:            spec.RunConfig.Platform.RunMode,
-			BackendKind:     string(spec.RunConfig.Backend.Kind),
-			ProviderName:    "docker",
-			BackendProvider: dockerProviderName(spec.RunConfig),
-			RuntimeProfile:  string(spec.RunConfig.Runtime.Profile),
-			Virtualization:  "none",
-			LocalPlatform:   dockerLocalPlatform(spec.RunConfig),
-			ContainerID:     containerID,
-			ContainerImage:  image,
-			ImageDigest:     imageDigest,
-			InContainer:     spec.RunConfig.Platform.ContainerExecutionMode == model.ContainerExecutionInContainerMode,
-			InKubernetes:    false,
-			DockerAvailable: true,
-			Capabilities:    inspectCapabilities(inspectResult.Container),
+			OS:                 "linux",
+			Arch:               spec.Target.Arch,
+			Mode:               spec.RunConfig.Platform.RunMode,
+			BackendKind:        string(spec.RunConfig.Execution.Backend),
+			ProviderName:       dockerProviderName(spec.RunConfig),
+			BackendProvider:    dockerProviderName(spec.RunConfig),
+			RuntimeProfile:     string(spec.RunConfig.Execution.RuntimeProfile),
+			Virtualization:     "none",
+			LocalPlatform:      dockerLocalPlatform(spec.RunConfig),
+			ContainerID:        containerID,
+			ContainerImage:     image,
+			ImageDigest:        imageDigest,
+			InContainer:        spec.RunConfig.Platform.ContainerExecutionMode == model.ContainerExecutionInContainerMode,
+			InKubernetes:       false,
+			DockerAvailable:    true,
+			Capabilities:       inspectCapabilities(inspectResult.Container),
+			Execution:          spec.RunConfig.Execution,
+			CompatibilityLevel: model.SupportLevel(spec.RunConfig.Metadata["execution.compatibility_level"]),
 		},
 		Metadata: map[string]any{
 			"container_id":             containerID,
@@ -309,13 +311,17 @@ func (w *dockerLineWriter) emitLine(line string) {
 			LineNo:       w.lines,
 			Line:         proc.Redact(line),
 			Attributes: map[string]string{
-				"backend.kind":            string(w.spec.RunConfig.Backend.Kind),
-				"backend.provider":        dockerProviderName(w.spec.RunConfig),
-				"runtime.profile":         string(w.spec.RunConfig.Runtime.Profile),
-				"local.platform":          dockerLocalPlatform(w.spec.RunConfig),
-				"sandbox.backend.kind":    string(w.spec.RunConfig.Backend.Kind),
-				"sandbox.provider.name":   "docker",
-				"sandbox.runtime.profile": string(w.spec.RunConfig.Runtime.Profile),
+				"execution.backend":             string(w.spec.RunConfig.Execution.Backend),
+				"execution.provider":            string(w.spec.RunConfig.Execution.Provider),
+				"execution.runtime_profile":     string(w.spec.RunConfig.Execution.RuntimeProfile),
+				"execution.compatibility_level": w.spec.RunConfig.Metadata["execution.compatibility_level"],
+				"backend.kind":                  string(w.spec.RunConfig.Backend.Kind),
+				"backend.provider":              dockerProviderName(w.spec.RunConfig),
+				"runtime.profile":               string(w.spec.RunConfig.Runtime.Profile),
+				"local.platform":                dockerLocalPlatform(w.spec.RunConfig),
+				"sandbox.backend.kind":          string(w.spec.RunConfig.Backend.Kind),
+				"sandbox.provider.name":         "docker",
+				"sandbox.runtime.profile":       string(w.spec.RunConfig.Runtime.Profile),
 			},
 		})
 	}
@@ -329,10 +335,13 @@ func dockerImage(cfg model.RunConfig) string {
 }
 
 func dockerProviderName(cfg model.RunConfig) string {
+	if cfg.Execution.Provider != "" {
+		return string(cfg.Execution.Provider)
+	}
 	if cfg.Docker.Provider == model.DockerProviderOrbStack {
 		return "orbstack"
 	}
-	return "docker"
+	return "native"
 }
 
 func dockerLocalPlatform(cfg model.RunConfig) string {

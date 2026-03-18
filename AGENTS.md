@@ -17,11 +17,30 @@ The core product idea is:
 - observability and replay are first-class outputs
 - policy is enforced before execution, not bolted on afterward
 
+## Current Required Refactor
+
+The current authoritative requirement is to normalize execution modeling to the standard triple:
+
+- `execution.backend`
+- `execution.provider`
+- `execution.runtime_profile`
+
+This triple is structural only. It is not a free-form Cartesian product.
+
+Every execution request must pass the same preflight chain:
+
+1. schema validation
+2. compatibility matrix validation
+3. capability probe
+4. only then may it enter `RunEngine`
+
+Future work in this repo must treat this as the source of truth, even where the current code still reflects older concepts such as `run_mode`, provider-specific config islands, or mixed sample naming.
+
 ## Fast Mental Model
 
 The normal control flow is:
 
-1. `cmd/sandbox-runner/main.go` starts the CLI.
+1. `cmd/sandbox-run/main.go` starts the CLI.
 2. `internal/cli` parses subcommands and loads config plus policy.
 3. `internal/phase.Engine` orchestrates `prepare -> setup -> execute -> verify -> collect`.
 4. `internal/backend` exposes a uniform sandbox/provider interface.
@@ -95,7 +114,7 @@ If a new run concept becomes user-visible, usually the change spans:
 - env overrides
 - path normalization
 - schema validation
-- backend/run-mode/runtime compatibility
+- backend/provider/runtime-profile compatibility handoff
 
 Do not spread config inference into unrelated packages.
 
@@ -116,6 +135,8 @@ Owned by `internal/phase`.
 Responsibilities:
 
 - normalize `run_id`, attempt, workspace, artifact paths
+- resolve the standard execution triple
+- run compatibility validation and capability probe before backend creation
 - detect execution target and resolve feature gates
 - create artifact writer
 - bootstrap collector and telemetry
@@ -174,15 +195,24 @@ Responsibilities:
 - OTel and run observability: `internal/telemetry/` and `internal/artifact/`
 - K8s render/submit support: `internal/kubernetes/` and `pkg/sdk/`
 - public helper APIs: `pkg/helper/`, `pkg/sdk/`
+- execution triple compatibility and capability probing: `internal/compat/` and `internal/capability/`
+- GitHub Actions and repository automation: `.github/workflows/`
+- repository-facing docs and navigation: `README.md` and `docs/`
 
 ## Directory Map
 
+- `.github/`
+  GitHub workflows and repository automation.
 - `cmd/`
   Thin binary entrypoint only.
 - `internal/cli/`
   CLI parsing and command dispatch.
 - `internal/config/`
   Defaults, loading, normalization, validation.
+- `internal/compat/`
+  Planned static compatibility matrix for `backend/provider/runtime_profile`.
+- `internal/capability/`
+  Planned backend-specific capability probes before execution.
 - `internal/model/`
   Shared enums, DTOs, artifact schemas, result types.
 - `internal/phase/`
@@ -217,6 +247,8 @@ Responsibilities:
   Sample configs and local collector config.
 - `deployments/`
   Kubernetes manifests.
+- `docs/`
+  Detailed documentation pages. Keep root `README.md` concise and link-driven.
 - `examples/`
   Example instrumented service.
 - `tests/`
@@ -229,7 +261,9 @@ Responsibilities:
 Touch at least:
 
 - `internal/model` if capability or config schema changes
-- `internal/config` for validation and normalization
+- `internal/config` for schema validation and normalization
+- `internal/compat` for allowed triples
+- `internal/capability` for probe behavior
 - `internal/backend/interface.go` if the protocol changes
 - `internal/backend/factory.go`
 - concrete backend implementation
@@ -240,7 +274,8 @@ Rules:
 
 - preserve the backend interface instead of special-casing phase logic
 - expose capabilities explicitly
-- return provider-specific detail through metadata, not control-flow branching everywhere
+- `provider` refines backend behavior; it does not replace backend selection
+- return provider-specific detail through metadata, matrix rules, and probe results instead of ad hoc control-flow branching everywhere
 
 ### Add a new artifact or result field
 
@@ -275,6 +310,7 @@ Touch:
 - `internal/config/defaults.go`
 - `internal/config/loader.go` if env overrides or normalization change
 - `internal/config/validate.go`
+- `internal/compat` and `internal/capability` if execution semantics change
 - sample files in `configs/`
 - `README.md`
 
@@ -288,6 +324,8 @@ Start in `internal/phase/engine.go`, then propagate only the minimum downstream 
 - Do not bypass policy checks by adding direct command execution elsewhere.
 - Treat `internal/model` as the shared contract surface; schema changes usually ripple into docs, config samples, artifacts, and tests.
 - Keep provider-specific behavior behind backend interfaces instead of scattering conditionals across the repo.
+- Do not allow arbitrary `backend/provider/runtime_profile` triples into execution; enforce schema, compatibility, and capability in order.
+- Telemetry, structured logs, and `context.json` must converge on the standard execution triple plus compatibility level and capability probe result.
 - Update nearby tests when behavior changes.
 
 ## Current Reality and Caveats
@@ -295,15 +333,16 @@ Start in `internal/phase/engine.go`, then propagate only the minimum downstream 
 - The fully wired main path is `direct`, `docker`, `devcontainer`, `k8s`, and `opensandbox`.
 - `internal/model` and config defaults already contain `apple-container` and `orbstack` concepts, but current validation and backend factory do not fully treat them as supported production paths. Assume they are planned or partial unless the implementation is completed end to end.
 - `internal/backend/LocalBackend` is mostly a capability/runtime shim. Real local command execution happens in `internal/executor`.
-- Hidden `.sandbox-runner/` directories and `dist/` are generated outputs, not architecture sources.
+- The current codebase still mixes older `run_mode`-centric modeling with provider-specific fields. New work should reduce that drift and move toward the explicit execution triple model.
+- Hidden `.sandbox-run/` directories and `dist/` are generated outputs, not architecture sources.
 
 ## Generated Or External Directories
 
 Do not treat these as source areas for architecture work:
 
 - `.git/`
-- `.sandbox-runner/`
-- `cmd/sandbox-runner/.sandbox-runner/`
+- `.sandbox-run/`
+- `cmd/sandbox-run/.sandbox-run/`
 - `dist/`
 
 They are repository metadata or generated runtime output.
@@ -311,7 +350,7 @@ They are repository metadata or generated runtime output.
 ## How An Agent Should Work In This Repo
 
 1. Read this file first.
-2. Then read the nearest `AGENTS.md` for the directory you are changing.
+2. Then read the first-level directory `AGENTS.md` for the area you are changing.
 3. Prefer edits that stay inside one layer.
 4. If a user-visible behavior changes, sync docs, sample configs, and tests in the same pass.
 5. If a change crosses phase semantics, backend capability contracts, or artifact schema, verify the whole chain rather than patching one file in isolation.

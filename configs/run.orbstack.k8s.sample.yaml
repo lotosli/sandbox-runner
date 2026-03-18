@@ -15,6 +15,11 @@ run:
   language: auto
   image: ghcr.io/lotosli/sandbox-runner:latest
 
+execution:
+  backend: k8s
+  provider: orbstack
+  runtime_profile: default
+
 backend:
   kind: k8s
 

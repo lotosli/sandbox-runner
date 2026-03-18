@@ -81,14 +81,21 @@ func ResolveFeatures(cfg model.RunConfig, target model.ExecutionTarget) (model.F
 		features.OBIEBPF = true
 	}
 	target.BackendKind = string(cfg.Backend.Kind)
-	target.ProviderName = providerName(cfg)
-	target.BackendProvider = backendProvider(cfg)
+	if cfg.Execution.Backend != "" {
+		target.BackendKind = string(cfg.Execution.Backend)
+		target.ProviderName = string(cfg.Execution.Provider)
+		target.BackendProvider = string(cfg.Execution.Provider)
+		target.RuntimeProfile = string(cfg.Execution.RuntimeProfile)
+		target.Execution = cfg.Execution
+	} else {
+		target.ProviderName = providerName(cfg)
+		target.BackendProvider = backendProvider(cfg)
+		target.RuntimeProfile = string(cfg.Runtime.Profile)
+	}
 	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
-		target.ProviderName = "opensandbox"
 		target.RuntimeKind = string(cfg.OpenSandbox.Runtime)
 		target.NetworkMode = cfg.OpenSandbox.NetworkMode
 	} else if cfg.Backend.Kind == model.BackendKindDevContainer {
-		target.ProviderName = "devcontainer"
 		target.RuntimeKind = "devcontainer"
 	} else if cfg.Backend.Kind == model.BackendKindAppleContainer {
 		target.RuntimeKind = "apple-container"
@@ -102,7 +109,6 @@ func ResolveFeatures(cfg model.RunConfig, target model.ExecutionTarget) (model.F
 	} else if cfg.Backend.Kind == model.BackendKindK8s && cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
 		target.LocalPlatform = "orbstack"
 	}
-	target.RuntimeProfile = string(cfg.Runtime.Profile)
 	target.RuntimeClassName = cfg.Kata.RuntimeClassName
 	target.Virtualization = virtualizationForProfile(cfg.Runtime.Profile)
 	return features, warnings, nil
@@ -253,6 +259,9 @@ var linuxCapabilityNames = map[uint]string{
 }
 
 func providerName(cfg model.RunConfig) string {
+	if cfg.Execution.Provider != "" {
+		return string(cfg.Execution.Provider)
+	}
 	switch cfg.Backend.Kind {
 	case model.BackendKindOpenSandbox:
 		return "opensandbox"
@@ -264,6 +273,9 @@ func providerName(cfg model.RunConfig) string {
 }
 
 func backendProvider(cfg model.RunConfig) string {
+	if cfg.Execution.Provider != "" {
+		return string(cfg.Execution.Provider)
+	}
 	switch cfg.Backend.Kind {
 	case model.BackendKindDirect:
 		return "native"
@@ -271,12 +283,12 @@ func backendProvider(cfg model.RunConfig) string {
 		if cfg.Docker.Provider == model.DockerProviderOrbStack {
 			return "orbstack"
 		}
-		return "docker"
+		return "native"
 	case model.BackendKindK8s:
 		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
 			return "orbstack"
 		}
-		return "k8s"
+		return "native"
 	case model.BackendKindOrbStackMachine:
 		return "orbstack"
 	default:

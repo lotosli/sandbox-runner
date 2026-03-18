@@ -6,23 +6,23 @@ import (
 	"github.com/lotosli/sandbox-runner/internal/model"
 )
 
-func New(runCfg model.RunConfig) (SandboxBackend, error) {
-	switch runCfg.Backend.Kind {
-	case model.BackendKindDirect:
+func New(resolution model.ExecutionResolution, runCfg model.RunConfig) (SandboxBackend, error) {
+	switch resolution.Config.Backend {
+	case model.ExecutionBackendDirect:
 		return NewLocalBackend(model.BackendKindDirect, runCfg), nil
-	case model.BackendKindDocker:
+	case model.ExecutionBackendDocker:
 		return NewLocalBackend(model.BackendKindDocker, runCfg), nil
-	case model.BackendKindDevContainer:
+	case model.ExecutionBackendDevContainer:
 		return NewDevContainerBackend(runCfg)
-	case model.BackendKindAppleContainer:
+	case model.ExecutionBackendAppleContainer:
 		return NewAppleContainerBackend(runCfg)
-	case model.BackendKindOrbStackMachine:
+	case model.ExecutionBackendMachine:
 		return NewOrbStackMachineBackend(runCfg)
-	case model.BackendKindK8s:
+	case model.ExecutionBackendK8s:
 		return NewLocalBackend(model.BackendKindK8s, runCfg), nil
-	case model.BackendKindOpenSandbox:
+	case model.ExecutionBackendOpenSandbox:
 		return NewOpenSandboxBackend(runCfg), nil
 	default:
-		return nil, fmt.Errorf("unsupported backend kind: %s", runCfg.Backend.Kind)
+		return nil, fmt.Errorf("unsupported backend kind: %s", resolution.Config.Backend)
 	}
 }

@@ -15,6 +15,11 @@ run:
   language: auto
   image: golang:1.24-alpine
 
+execution:
+  backend: docker
+  provider: orbstack
+  runtime_profile: default
+
 backend:
   kind: docker
 

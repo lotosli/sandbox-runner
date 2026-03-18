@@ -51,6 +51,11 @@ artifacts:
   object_prefix: sandbox-runner-runs/
   backend: local
 
+execution:
+  backend: devcontainer
+  provider: native
+  runtime_profile: default
+
 backend:
   kind: devcontainer
 

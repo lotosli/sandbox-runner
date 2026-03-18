@@ -14,6 +14,11 @@ run:
     - ./...
   language: auto
 
+execution:
+  backend: machine
+  provider: orbstack
+  runtime_profile: default
+
 backend:
   kind: orbstack-machine
 

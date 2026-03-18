@@ -13,7 +13,10 @@ import (
 	"github.com/lotosli/sandbox-runner/internal/adapter"
 	"github.com/lotosli/sandbox-runner/internal/artifact"
 	"github.com/lotosli/sandbox-runner/internal/backend"
+	"github.com/lotosli/sandbox-runner/internal/capability"
 	"github.com/lotosli/sandbox-runner/internal/collector"
+	"github.com/lotosli/sandbox-runner/internal/compat"
+	"github.com/lotosli/sandbox-runner/internal/config"
 	"github.com/lotosli/sandbox-runner/internal/envsync"
 	"github.com/lotosli/sandbox-runner/internal/executor"
 	"github.com/lotosli/sandbox-runner/internal/model"
@@ -54,6 +57,7 @@ type runState struct {
 	environment      model.EnvironmentFingerprint
 	commandClass     string
 	target           model.ExecutionTarget
+	resolution       model.ExecutionResolution
 	runCtx           context.Context
 }
 
@@ -105,7 +109,7 @@ func (e Engine) Run(ctx context.Context, req *model.RunRequest) (*model.RunResul
 
 func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 	req := state.req
-	cfg := req.RunConfig
+	cfg := config.NormalizeRunConfig(req.RunConfig)
 	if cfg.Run.RunID == "" {
 		cfg.Run.RunID = generateRunID()
 	}
@@ -122,18 +126,44 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 	}
 	cfg.Run.WorkspaceDir = workspace
 	cfg.Run.ArtifactDir = artifactDir
+	compatibilityResult := compat.ValidateCompatibility(cfg.Execution)
+	if compatibilityResult.Level == model.SupportUnsupported {
+		return e.failWithoutArtifacts(state, model.PhasePrepare, model.ErrorCodeUnsupportedExecutionCombo, model.RunnerError{
+			Code:        string(model.ErrorCodeUnsupportedExecutionCombo),
+			Message:     compatibilityResult.Message,
+			BackendKind: string(cfg.Execution.Backend),
+		})
+	}
+	capabilityResult, err := capability.Probe(ctx, cfg.Execution, cfg)
+	if err != nil {
+		return e.failWithoutArtifacts(state, model.PhasePrepare, model.ErrorCodeCapabilityProbeFailed, err)
+	}
+	state.resolution = model.ExecutionResolution{
+		Config:        cfg.Execution,
+		Compatibility: compatibilityResult,
+		Capability:    capabilityResult,
+	}
+	if cfg.Metadata == nil {
+		cfg.Metadata = map[string]string{}
+	}
+	cfg.Metadata["execution.backend"] = string(cfg.Execution.Backend)
+	cfg.Metadata["execution.provider"] = string(cfg.Execution.Provider)
+	cfg.Metadata["execution.runtime_profile"] = string(cfg.Execution.RuntimeProfile)
+	cfg.Metadata["execution.compatibility_level"] = string(compatibilityResult.Level)
 	req.RunConfig = cfg
 
 	state.target = platform.Detect(cfg.Platform.RunMode)
-	state.target.BackendKind = string(cfg.Backend.Kind)
-	state.target.ProviderName = providerNameForConfig(cfg)
-	state.target.BackendProvider = backendProviderForConfig(cfg)
-	state.target.RuntimeProfile = string(cfg.Runtime.Profile)
+	state.target.BackendKind = string(cfg.Execution.Backend)
+	state.target.ProviderName = string(cfg.Execution.Provider)
+	state.target.BackendProvider = string(cfg.Execution.Provider)
+	state.target.RuntimeProfile = string(cfg.Execution.RuntimeProfile)
 	state.target.RuntimeClassName = cfg.Kata.RuntimeClassName
 	state.target.Virtualization = virtualizationForRuntime(cfg.Runtime.Profile)
 	state.target.RuntimeKind = runtimeKindForConfig(cfg)
 	state.target.LocalPlatform = localPlatformForConfig(cfg)
 	state.target.ContainerImage = sandboxImage(cfg)
+	state.target.Execution = cfg.Execution
+	state.target.CompatibilityLevel = compatibilityResult.Level
 	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
 		state.target.NetworkMode = cfg.OpenSandbox.NetworkMode
 	}
@@ -183,7 +213,7 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 	state.runCtx = runCtx
 	phaseCtx, started := e.startPhase(ctx, state, model.PhasePrepare)
 
-	backendImpl, err := backend.New(cfg)
+	backendImpl, err := backend.New(state.resolution, cfg)
 	if err != nil {
 		return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeConfigInvalid, err)
 	}
@@ -194,28 +224,28 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 		return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeSandboxUnsupportedCapability, err)
 	}
 	state.backendCaps = caps
-	state.result.BackendKind = string(cfg.Backend.Kind)
-	state.result.ProviderName = providerNameForConfig(cfg)
-	state.result.BackendProvider = backendProviderForConfig(cfg)
+	state.result.BackendKind = string(cfg.Execution.Backend)
+	state.result.ProviderName = string(cfg.Execution.Provider)
+	state.result.BackendProvider = string(cfg.Execution.Provider)
 	state.result.SandboxImage = sandboxImage(cfg)
 	runtimeInfo, err := backendImpl.RuntimeInfo(phaseCtx)
 	if err != nil {
 		return e.failPhase(phaseCtx, state, model.PhasePrepare, started, model.ErrorCodeSandboxUnsupportedCapability, err)
 	}
 	state.runtimeInfo = runtimeInfo
-	state.result.RuntimeProfile = runtimeInfo.RuntimeProfile
+	state.result.RuntimeProfile = string(cfg.Execution.RuntimeProfile)
 	state.result.RuntimeClassName = runtimeInfo.RuntimeClassName
-	state.result.BackendProvider = firstNonEmpty(runtimeInfo.BackendProvider, state.result.BackendProvider)
 	state.result.MachineName = firstNonEmpty(runtimeInfo.MachineName, cfg.OrbStack.MachineName)
-	state.target.RuntimeProfile = runtimeInfo.RuntimeProfile
 	state.target.RuntimeClassName = runtimeInfo.RuntimeClassName
 	if runtimeInfo.Virtualization != "" {
 		state.target.Virtualization = runtimeInfo.Virtualization
 	}
-	state.target.BackendProvider = firstNonEmpty(runtimeInfo.BackendProvider, state.target.BackendProvider)
 	state.target.LocalPlatform = firstNonEmpty(runtimeInfo.LocalPlatform, state.target.LocalPlatform)
 	state.target.MachineName = firstNonEmpty(runtimeInfo.MachineName, state.target.MachineName)
 	state.target.ContainerID = firstNonEmpty(runtimeInfo.ContainerID, state.target.ContainerID)
+	state.result.Metadata["execution"] = state.resolution.Config
+	state.result.Metadata["compatibility"] = state.resolution.Compatibility
+	state.result.Metadata["capability_probe"] = state.resolution.Capability
 	state.result.Metadata["backend"] = backendSnapshot(cfg, caps)
 	state.result.Metadata["runtime"] = runtimeArtifact(cfg, runtimeInfo)
 	_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{
@@ -223,9 +253,13 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 		Phase: model.PhasePrepare,
 		At:    time.Now().UTC(),
 		Attributes: map[string]string{
-			"sandbox.runtime.profile": runtimeInfo.RuntimeProfile,
-			"sandbox.runtime.class":   runtimeInfo.RuntimeClassName,
-			"sandbox.virtualization":  runtimeInfo.Virtualization,
+			"execution.backend":             string(cfg.Execution.Backend),
+			"execution.provider":            string(cfg.Execution.Provider),
+			"execution.runtime_profile":     string(cfg.Execution.RuntimeProfile),
+			"execution.compatibility_level": string(compatibilityResult.Level),
+			"sandbox.runtime.profile":       runtimeInfo.RuntimeProfile,
+			"sandbox.runtime.class":         runtimeInfo.RuntimeClassName,
+			"sandbox.virtualization":        runtimeInfo.Virtualization,
 		},
 	})
 	if cfg.Runtime.Profile == model.RuntimeProfileKata {
@@ -346,6 +380,9 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 		StartedAt:       state.result.StartedAt,
 		OriginalCommand: cfg.Run.Command,
 		OTLPEndpoint:    cfg.Run.OTLPEndpoint,
+		Execution:       state.resolution.Config,
+		Compatibility:   state.resolution.Compatibility,
+		CapabilityProbe: state.resolution.Capability,
 		Target:          state.target,
 		FeatureGates:    features,
 		Backend:         backendSnapshot(cfg, caps),
@@ -827,15 +864,17 @@ func successPhaseWithExec(phase model.Phase, started time.Time, commandClass str
 
 func (e Engine) recordCommand(ctx context.Context, state *runState, phase model.Phase, command []string, result executor.Result) {
 	record := map[string]any{
-		"ts":            time.Now().UTC(),
-		"phase":         phase,
-		"command":       command,
-		"command_class": proc.ClassifyCommand(command),
-		"exit_code":     result.ExitCode,
-		"timed_out":     result.TimedOut,
-		"signal":        result.Signal,
-		"duration_ms":   result.Duration.Milliseconds(),
-		"target":        result.Target,
+		"ts":                  time.Now().UTC(),
+		"phase":               phase,
+		"command":             command,
+		"command_class":       proc.ClassifyCommand(command),
+		"exit_code":           result.ExitCode,
+		"timed_out":           result.TimedOut,
+		"signal":              result.Signal,
+		"duration_ms":         result.Duration.Milliseconds(),
+		"target":              result.Target,
+		"execution":           state.resolution.Config,
+		"compatibility_level": state.resolution.Compatibility.Level,
 	}
 	for key, value := range result.Metadata {
 		record[key] = value
@@ -869,6 +908,13 @@ func newLogHandler(ctx context.Context, state *runState) logHandler {
 
 func (h logHandler) OnLog(ctx context.Context, log model.StructuredLog) error {
 	_ = ctx
+	if log.Attributes == nil {
+		log.Attributes = map[string]string{}
+	}
+	log.Attributes["execution.backend"] = string(h.state.resolution.Config.Backend)
+	log.Attributes["execution.provider"] = string(h.state.resolution.Config.Provider)
+	log.Attributes["execution.runtime_profile"] = string(h.state.resolution.Config.RuntimeProfile)
+	log.Attributes["execution.compatibility_level"] = string(h.state.resolution.Compatibility.Level)
 	if h.state.emitter != nil {
 		_ = h.state.emitter.EmitLog(h.ctx, log)
 	}
@@ -912,13 +958,17 @@ func (e Engine) buildCreateSandboxRequest(cfg model.RunConfig) backend.CreateSan
 		Entrypoint:  cfg.Sandbox.Entrypoint,
 		Env:         env,
 		Metadata: map[string]string{
-			"run_id":           cfg.Run.RunID,
-			"attempt":          fmt.Sprintf("%d", cfg.Run.Attempt),
-			"runtime.profile":  string(cfg.Runtime.Profile),
-			"runtime.class":    cfg.Kata.RuntimeClassName,
-			"backend.kind":     string(cfg.Backend.Kind),
-			"backend.provider": backendProviderForConfig(cfg),
-			"local.platform":   localPlatformForConfig(cfg),
+			"run_id":                        cfg.Run.RunID,
+			"attempt":                       fmt.Sprintf("%d", cfg.Run.Attempt),
+			"execution.backend":             string(cfg.Execution.Backend),
+			"execution.provider":            string(cfg.Execution.Provider),
+			"execution.runtime_profile":     string(cfg.Execution.RuntimeProfile),
+			"execution.compatibility_level": cfg.Metadata["execution.compatibility_level"],
+			"runtime.profile":               string(cfg.Runtime.Profile),
+			"runtime.class":                 cfg.Kata.RuntimeClassName,
+			"backend.kind":                  string(cfg.Backend.Kind),
+			"backend.provider":              backendProviderForConfig(cfg),
+			"local.platform":                localPlatformForConfig(cfg),
 		},
 		CPU:          cfg.Sandbox.CPU,
 		Memory:       cfg.Sandbox.Memory,
@@ -989,10 +1039,10 @@ func hasCapability(name string, caps model.BackendCapabilities) bool {
 
 func backendSnapshot(cfg model.RunConfig, caps model.BackendCapabilities) *model.BackendSnapshot {
 	snapshot := &model.BackendSnapshot{
-		Kind:             string(cfg.Backend.Kind),
+		Kind:             string(cfg.Execution.Backend),
 		Provider:         providerNameForConfig(cfg),
 		BackendProvider:  backendProviderForConfig(cfg),
-		RuntimeProfile:   string(cfg.Runtime.Profile),
+		RuntimeProfile:   string(cfg.Execution.RuntimeProfile),
 		RuntimeClassName: cfg.Kata.RuntimeClassName,
 		Virtualization:   virtualizationForRuntime(cfg.Runtime.Profile),
 		LocalPlatform:    localPlatformForConfig(cfg),
@@ -1026,7 +1076,7 @@ func sandboxSnapshot(info backend.SandboxInfo, cfg model.RunConfig) *model.Sandb
 		ID:               id,
 		Status:           info.Status,
 		NetworkMode:      cfg.OpenSandbox.NetworkMode,
-		RuntimeProfile:   string(cfg.Runtime.Profile),
+		RuntimeProfile:   string(cfg.Execution.RuntimeProfile),
 		RuntimeClassName: cfg.Kata.RuntimeClassName,
 		Virtualization:   virtualizationForRuntime(cfg.Runtime.Profile),
 		MachineName:      machineNameForSandbox(cfg, info),
@@ -1037,10 +1087,10 @@ func sandboxSnapshot(info backend.SandboxInfo, cfg model.RunConfig) *model.Sandb
 
 func providerArtifact(cfg model.RunConfig, caps model.BackendCapabilities, devInfo *model.DevContainerArtifact) model.ProviderArtifact {
 	artifact := model.ProviderArtifact{
-		BackendKind:         string(cfg.Backend.Kind),
+		BackendKind:         string(cfg.Execution.Backend),
 		ProviderName:        providerNameForConfig(cfg),
 		BackendProvider:     backendProviderForConfig(cfg),
-		RuntimeProfile:      string(cfg.Runtime.Profile),
+		RuntimeProfile:      string(cfg.Execution.RuntimeProfile),
 		RuntimeClassName:    cfg.Kata.RuntimeClassName,
 		LocalPlatform:       localPlatformForConfig(cfg),
 		SupportsTTL:         caps.SupportsTTL,
@@ -1066,7 +1116,7 @@ func sandboxArtifact(info backend.SandboxInfo, cfg model.RunConfig) model.Sandbo
 		Status:           info.Status,
 		ExpiresAt:        info.ExpiresAt,
 		NetworkMode:      cfg.OpenSandbox.NetworkMode,
-		RuntimeProfile:   string(cfg.Runtime.Profile),
+		RuntimeProfile:   string(cfg.Execution.RuntimeProfile),
 		RuntimeClassName: cfg.Kata.RuntimeClassName,
 		Virtualization:   virtualizationForRuntime(cfg.Runtime.Profile),
 		MachineName:      machineNameForSandbox(cfg, info),
@@ -1151,10 +1201,10 @@ func runtimeArtifact(cfg model.RunConfig, runtimeInfo model.RuntimeInfo) model.R
 		containerID = firstNonEmpty(containerID, cfg.Run.SandboxID)
 	}
 	return model.RuntimeArtifact{
-		BackendKind:      string(cfg.Backend.Kind),
+		BackendKind:      string(cfg.Execution.Backend),
 		ProviderName:     providerNameForConfig(cfg),
 		BackendProvider:  firstNonEmpty(runtimeInfo.BackendProvider, backendProviderForConfig(cfg)),
-		RuntimeProfile:   runtimeInfo.RuntimeProfile,
+		RuntimeProfile:   firstNonEmpty(string(cfg.Execution.RuntimeProfile), runtimeInfo.RuntimeProfile),
 		RuntimeClassName: runtimeInfo.RuntimeClassName,
 		ContainerRuntime: runtimeInfo.ContainerRuntime,
 		Virtualization:   runtimeInfo.Virtualization,
@@ -1170,17 +1220,16 @@ func runtimeArtifact(cfg model.RunConfig, runtimeInfo model.RuntimeInfo) model.R
 }
 
 func providerNameForConfig(cfg model.RunConfig) string {
-	switch cfg.Backend.Kind {
-	case model.BackendKindOpenSandbox:
-		return "opensandbox"
-	case model.BackendKindDevContainer:
-		return "devcontainer"
-	default:
-		return string(cfg.Backend.Kind)
+	if cfg.Execution.Provider != "" {
+		return string(cfg.Execution.Provider)
 	}
+	return backendProviderForConfig(cfg)
 }
 
 func backendProviderForConfig(cfg model.RunConfig) string {
+	if cfg.Execution.Provider != "" {
+		return string(cfg.Execution.Provider)
+	}
 	switch cfg.Backend.Kind {
 	case model.BackendKindDirect:
 		return "native"
@@ -1188,14 +1237,18 @@ func backendProviderForConfig(cfg model.RunConfig) string {
 		if cfg.Docker.Provider == model.DockerProviderOrbStack {
 			return "orbstack"
 		}
-		return "docker"
+		return "native"
 	case model.BackendKindK8s:
 		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
 			return "orbstack"
 		}
-		return "k8s"
+		return "native"
 	case model.BackendKindOrbStackMachine:
 		return "orbstack"
+	case model.BackendKindOpenSandbox:
+		return "opensandbox"
+	case model.BackendKindDevContainer, model.BackendKindAppleContainer:
+		return "native"
 	default:
 		return string(cfg.Backend.Kind)
 	}
@@ -1203,13 +1256,11 @@ func backendProviderForConfig(cfg model.RunConfig) string {
 
 func localPlatformForConfig(cfg model.RunConfig) string {
 	switch {
-	case cfg.Backend.Kind == model.BackendKindAppleContainer:
+	case cfg.Execution.Backend == model.ExecutionBackendAppleContainer:
 		return "macos"
-	case cfg.Backend.Kind == model.BackendKindOrbStackMachine:
+	case cfg.Execution.Backend == model.ExecutionBackendMachine:
 		return "orbstack"
-	case cfg.Backend.Kind == model.BackendKindDocker && cfg.Docker.Provider == model.DockerProviderOrbStack:
-		return "orbstack"
-	case cfg.Backend.Kind == model.BackendKindK8s && cfg.K8s.Provider == model.K8sProviderOrbStackLocal:
+	case cfg.Execution.Provider == model.ProviderOrbStack:
 		return "orbstack"
 	default:
 		return ""
@@ -1257,9 +1308,9 @@ func machineNameForSandbox(cfg model.RunConfig, info backend.SandboxInfo) string
 
 func backendProfileArtifact(cfg model.RunConfig, runtimeInfo model.RuntimeInfo) model.BackendProfileArtifact {
 	return model.BackendProfileArtifact{
-		BackendKind:     string(cfg.Backend.Kind),
+		BackendKind:     string(cfg.Execution.Backend),
 		BackendProvider: firstNonEmpty(runtimeInfo.BackendProvider, backendProviderForConfig(cfg)),
-		RuntimeProfile:  firstNonEmpty(runtimeInfo.RuntimeProfile, string(cfg.Runtime.Profile)),
+		RuntimeProfile:  string(cfg.Execution.RuntimeProfile),
 		LocalPlatform:   firstNonEmpty(runtimeInfo.LocalPlatform, localPlatformForConfig(cfg)),
 	}
 }
@@ -1388,6 +1439,10 @@ func virtualizationForRuntime(profile model.RuntimeProfile) string {
 	switch profile {
 	case model.RuntimeProfileKata:
 		return "kata"
+	case model.RuntimeProfileGVisor:
+		return "gvisor"
+	case model.RuntimeProfileFirecracker:
+		return "firecracker"
 	case model.RuntimeProfileAppleContainer:
 		return "apple-container"
 	case model.RuntimeProfileOrbStackMachine:

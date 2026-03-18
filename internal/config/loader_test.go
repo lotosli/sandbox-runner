@@ -36,6 +36,15 @@ opensandbox:
 	if cfg.Backend.Kind != model.BackendKindOpenSandbox {
 		t.Fatalf("backend.kind = %s, want %s", cfg.Backend.Kind, model.BackendKindOpenSandbox)
 	}
+	if cfg.Execution.Backend != model.ExecutionBackendOpenSandbox {
+		t.Fatalf("execution.backend = %s, want %s", cfg.Execution.Backend, model.ExecutionBackendOpenSandbox)
+	}
+	if cfg.Execution.Provider != model.ProviderOpenSandbox {
+		t.Fatalf("execution.provider = %s, want %s", cfg.Execution.Provider, model.ProviderOpenSandbox)
+	}
+	if cfg.Execution.RuntimeProfile != model.ExecutionRuntimeProfileDefault {
+		t.Fatalf("execution.runtime_profile = %s, want %s", cfg.Execution.RuntimeProfile, model.ExecutionRuntimeProfileDefault)
+	}
 	if cfg.Sandbox.Image != "alpine:3.20" {
 		t.Fatalf("sandbox.image = %s, want alpine:3.20", cfg.Sandbox.Image)
 	}

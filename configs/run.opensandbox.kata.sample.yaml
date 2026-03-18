@@ -52,6 +52,11 @@ artifacts:
   object_prefix: sandbox-runner-runs/
   backend: local
 
+execution:
+  backend: opensandbox
+  provider: opensandbox
+  runtime_profile: kata
+
 backend:
   kind: opensandbox
 

@@ -30,6 +30,10 @@ func LoadRunConfig(path string) (model.RunConfig, error) {
 	return cfg, ValidateRunConfig(cfg)
 }
 
+func NormalizeRunConfig(cfg model.RunConfig) model.RunConfig {
+	return normalizeRunConfig(cfg)
+}
+
 func LoadPolicyConfig(path string) (model.PolicyConfig, error) {
 	cfg := DefaultPolicyConfig()
 	if path == "" {
@@ -116,6 +120,7 @@ func normalizeRunConfig(cfg model.RunConfig) model.RunConfig {
 	cfg.DevContainer.ConfigPath = cleanPath(cfg.DevContainer.ConfigPath)
 	cfg.DevContainer.WorkspaceFolder = cleanPath(cfg.DevContainer.WorkspaceFolder)
 	cfg.K8s.Kubeconfig = cleanPath(cfg.K8s.Kubeconfig)
+	cfg = normalizeExecutionConfig(cfg)
 	inferredKind := inferBackendKind(cfg.Platform.RunMode)
 	if cfg.Backend.Kind == "" || cfg.Backend.Kind == model.BackendKindDirect && inferredKind != model.BackendKindDirect {
 		cfg.Backend.Kind = inferredKind

@@ -47,24 +47,71 @@ const (
 type BackendKind string
 
 const (
-	BackendKindDirect       BackendKind = "direct"
-	BackendKindDocker       BackendKind = "docker"
-	BackendKindDevContainer BackendKind = "devcontainer"
-	BackendKindAppleContainer BackendKind = "apple-container"
+	BackendKindDirect          BackendKind = "direct"
+	BackendKindDocker          BackendKind = "docker"
+	BackendKindDevContainer    BackendKind = "devcontainer"
+	BackendKindAppleContainer  BackendKind = "apple-container"
 	BackendKindOrbStackMachine BackendKind = "orbstack-machine"
-	BackendKindK8s          BackendKind = "k8s"
-	BackendKindOpenSandbox  BackendKind = "opensandbox"
+	BackendKindK8s             BackendKind = "k8s"
+	BackendKindOpenSandbox     BackendKind = "opensandbox"
 )
 
 type RuntimeProfile string
 
 const (
-	RuntimeProfileNative         RuntimeProfile = "native"
-	RuntimeProfileKata           RuntimeProfile = "kata"
-	RuntimeProfileAppleContainer RuntimeProfile = "apple-container"
-	RuntimeProfileOrbStackDocker RuntimeProfile = "orbstack-docker"
-	RuntimeProfileOrbStackK8s    RuntimeProfile = "orbstack-k8s"
+	RuntimeProfileDefault         RuntimeProfile = "default"
+	RuntimeProfileNative          RuntimeProfile = "native"
+	RuntimeProfileKata            RuntimeProfile = "kata"
+	RuntimeProfileGVisor          RuntimeProfile = "gvisor"
+	RuntimeProfileFirecracker     RuntimeProfile = "firecracker"
+	RuntimeProfileAppleContainer  RuntimeProfile = "apple-container"
+	RuntimeProfileOrbStackDocker  RuntimeProfile = "orbstack-docker"
+	RuntimeProfileOrbStackK8s     RuntimeProfile = "orbstack-k8s"
 	RuntimeProfileOrbStackMachine RuntimeProfile = "orbstack-machine"
+)
+
+type ExecutionBackend string
+
+const (
+	ExecutionBackendDirect         ExecutionBackend = "direct"
+	ExecutionBackendDocker         ExecutionBackend = "docker"
+	ExecutionBackendK8s            ExecutionBackend = "k8s"
+	ExecutionBackendOpenSandbox    ExecutionBackend = "opensandbox"
+	ExecutionBackendDevContainer   ExecutionBackend = "devcontainer"
+	ExecutionBackendAppleContainer ExecutionBackend = "apple-container"
+	ExecutionBackendMachine        ExecutionBackend = "machine"
+)
+
+type ProviderKind string
+
+const (
+	ProviderNative        ProviderKind = "native"
+	ProviderOrbStack      ProviderKind = "orbstack"
+	ProviderKindKind      ProviderKind = "kind"
+	ProviderMinikube      ProviderKind = "minikube"
+	ProviderDockerDesktop ProviderKind = "docker-desktop"
+	ProviderColima        ProviderKind = "colima"
+	ProviderGKE           ProviderKind = "gke"
+	ProviderEKS           ProviderKind = "eks"
+	ProviderAKS           ProviderKind = "aks"
+	ProviderOpenSandbox   ProviderKind = "opensandbox"
+)
+
+type ExecutionRuntimeProfile string
+
+const (
+	ExecutionRuntimeProfileDefault     ExecutionRuntimeProfile = "default"
+	ExecutionRuntimeProfileKata        ExecutionRuntimeProfile = "kata"
+	ExecutionRuntimeProfileGVisor      ExecutionRuntimeProfile = "gvisor"
+	ExecutionRuntimeProfileFirecracker ExecutionRuntimeProfile = "firecracker"
+)
+
+type SupportLevel string
+
+const (
+	SupportSupported   SupportLevel = "supported"
+	SupportConditional SupportLevel = "conditional"
+	SupportUnsupported SupportLevel = "unsupported"
 )
 
 type DockerProvider string
@@ -123,63 +170,69 @@ const (
 	ErrorCodePolicySecretDeny   ErrorCode = "POLICY_SECRET_DENY"
 	ErrorCodePolicyResourceDeny ErrorCode = "POLICY_RESOURCE_DENY"
 
-	ErrorCodeSandboxCreateFailed          ErrorCode = "sandbox.create_failed"
-	ErrorCodeSandboxStartFailed           ErrorCode = "sandbox.start_failed"
-	ErrorCodeSandboxExecFailed            ErrorCode = "sandbox.exec_failed"
-	ErrorCodeSandboxStreamFailed          ErrorCode = "sandbox.stream_failed"
-	ErrorCodeSandboxUploadFailed          ErrorCode = "sandbox.upload_failed"
-	ErrorCodeSandboxDownloadFailed        ErrorCode = "sandbox.download_failed"
-	ErrorCodeSandboxDeleteFailed          ErrorCode = "sandbox.delete_failed"
-	ErrorCodeSandboxPauseFailed           ErrorCode = "sandbox.pause_failed"
-	ErrorCodeSandboxResumeFailed          ErrorCode = "sandbox.resume_failed"
-	ErrorCodeSandboxRenewFailed           ErrorCode = "sandbox.renew_failed"
-	ErrorCodeSandboxUnsupportedCapability ErrorCode = "sandbox.unsupported_capability"
-	ErrorCodeDevContainerCLINotFound      ErrorCode = "devcontainer.cli_not_found"
-	ErrorCodeDevContainerReadConfigFailed ErrorCode = "devcontainer.read_configuration_failed"
-	ErrorCodeDevContainerUpFailed         ErrorCode = "devcontainer.up_failed"
-	ErrorCodeDevContainerExecFailed       ErrorCode = "devcontainer.exec_failed"
-	ErrorCodeDevContainerDownFailed       ErrorCode = "devcontainer.down_failed"
-	ErrorCodeRuntimeProfileUnsupported    ErrorCode = "runtime.profile.unsupported"
-	ErrorCodeKataPreflightFailed          ErrorCode = "kata.preflight_failed"
-	ErrorCodeKataRuntimeClassNotFound     ErrorCode = "kata.runtimeclass_not_found"
-	ErrorCodeProviderRuntimeUnsupported   ErrorCode = "provider.runtime_profile_not_supported"
-	ErrorCodeAppleContainerBinaryNotFound ErrorCode = "apple_container.binary_not_found"
-	ErrorCodeAppleContainerUnsupported    ErrorCode = "apple_container.unsupported_platform"
-	ErrorCodeAppleContainerCreateFailed   ErrorCode = "apple_container.create_failed"
-	ErrorCodeAppleContainerExecFailed     ErrorCode = "apple_container.exec_failed"
-	ErrorCodeAppleContainerCopyFailed     ErrorCode = "apple_container.copy_failed"
-	ErrorCodeAppleContainerDeleteFailed   ErrorCode = "apple_container.delete_failed"
-	ErrorCodeOrbStackBinaryNotFound       ErrorCode = "orbstack.binary_not_found"
-	ErrorCodeOrbStackMachineNotFound      ErrorCode = "orbstack.machine_not_found"
-	ErrorCodeOrbStackMachineCreateFailed  ErrorCode = "orbstack.machine_create_failed"
-	ErrorCodeOrbStackExecFailed           ErrorCode = "orbstack.exec_failed"
-	ErrorCodeOrbStackCopyFailed           ErrorCode = "orbstack.copy_failed"
-	ErrorCodeOrbStackStopFailed           ErrorCode = "orbstack.stop_failed"
-	ErrorCodeOrbStackDeleteFailed         ErrorCode = "orbstack.delete_failed"
-	ErrorCodeOrbStackK8sContextNotFound   ErrorCode = "orbstack.k8s_context_not_found"
-	ErrorCodeDockerProviderUnavailable    ErrorCode = "docker.provider_unavailable"
+	ErrorCodeSandboxCreateFailed           ErrorCode = "sandbox.create_failed"
+	ErrorCodeSandboxStartFailed            ErrorCode = "sandbox.start_failed"
+	ErrorCodeSandboxExecFailed             ErrorCode = "sandbox.exec_failed"
+	ErrorCodeSandboxStreamFailed           ErrorCode = "sandbox.stream_failed"
+	ErrorCodeSandboxUploadFailed           ErrorCode = "sandbox.upload_failed"
+	ErrorCodeSandboxDownloadFailed         ErrorCode = "sandbox.download_failed"
+	ErrorCodeSandboxDeleteFailed           ErrorCode = "sandbox.delete_failed"
+	ErrorCodeSandboxPauseFailed            ErrorCode = "sandbox.pause_failed"
+	ErrorCodeSandboxResumeFailed           ErrorCode = "sandbox.resume_failed"
+	ErrorCodeSandboxRenewFailed            ErrorCode = "sandbox.renew_failed"
+	ErrorCodeSandboxUnsupportedCapability  ErrorCode = "sandbox.unsupported_capability"
+	ErrorCodeDevContainerCLINotFound       ErrorCode = "devcontainer.cli_not_found"
+	ErrorCodeDevContainerReadConfigFailed  ErrorCode = "devcontainer.read_configuration_failed"
+	ErrorCodeDevContainerUpFailed          ErrorCode = "devcontainer.up_failed"
+	ErrorCodeDevContainerExecFailed        ErrorCode = "devcontainer.exec_failed"
+	ErrorCodeDevContainerDownFailed        ErrorCode = "devcontainer.down_failed"
+	ErrorCodeRuntimeProfileUnsupported     ErrorCode = "runtime.profile.unsupported"
+	ErrorCodeKataPreflightFailed           ErrorCode = "kata.preflight_failed"
+	ErrorCodeKataRuntimeClassNotFound      ErrorCode = "kata.runtimeclass_not_found"
+	ErrorCodeProviderRuntimeUnsupported    ErrorCode = "provider.runtime_profile_not_supported"
+	ErrorCodeAppleContainerBinaryNotFound  ErrorCode = "apple_container.binary_not_found"
+	ErrorCodeAppleContainerUnsupported     ErrorCode = "apple_container.unsupported_platform"
+	ErrorCodeAppleContainerCreateFailed    ErrorCode = "apple_container.create_failed"
+	ErrorCodeAppleContainerExecFailed      ErrorCode = "apple_container.exec_failed"
+	ErrorCodeAppleContainerCopyFailed      ErrorCode = "apple_container.copy_failed"
+	ErrorCodeAppleContainerDeleteFailed    ErrorCode = "apple_container.delete_failed"
+	ErrorCodeOrbStackBinaryNotFound        ErrorCode = "orbstack.binary_not_found"
+	ErrorCodeOrbStackMachineNotFound       ErrorCode = "orbstack.machine_not_found"
+	ErrorCodeOrbStackMachineCreateFailed   ErrorCode = "orbstack.machine_create_failed"
+	ErrorCodeOrbStackExecFailed            ErrorCode = "orbstack.exec_failed"
+	ErrorCodeOrbStackCopyFailed            ErrorCode = "orbstack.copy_failed"
+	ErrorCodeOrbStackStopFailed            ErrorCode = "orbstack.stop_failed"
+	ErrorCodeOrbStackDeleteFailed          ErrorCode = "orbstack.delete_failed"
+	ErrorCodeOrbStackK8sContextNotFound    ErrorCode = "orbstack.k8s_context_not_found"
+	ErrorCodeDockerProviderUnavailable     ErrorCode = "docker.provider_unavailable"
+	ErrorCodeConfigInvalidSchema           ErrorCode = "config.invalid_schema"
+	ErrorCodeUnsupportedExecutionCombo     ErrorCode = "config.unsupported_execution_combo"
+	ErrorCodeCapabilityProbeFailed         ErrorCode = "capability.probe_failed"
+	ErrorCodeCapabilityRuntimeUnavailable  ErrorCode = "capability.runtime_profile_unavailable"
+	ErrorCodeCapabilityProviderUnreachable ErrorCode = "capability.provider_unreachable"
 )
 
 type RunConfig struct {
-	Run          RunSection         `yaml:"run" json:"run"`
-	Phases       PhasesConfig       `yaml:"phases" json:"phases"`
-	Telemetry    TelemetryConfig    `yaml:"telemetry" json:"telemetry"`
-	Collector    CollectorConfig    `yaml:"collector" json:"collector"`
-	Artifacts    ArtifactsConfig    `yaml:"artifacts" json:"artifacts"`
-	Platform     PlatformConfig     `yaml:"platform" json:"platform"`
-	Backend      BackendConfig      `yaml:"backend" json:"backend"`
-	Runtime      RuntimeConfig      `yaml:"runtime" json:"runtime"`
-	Kata         KataConfig         `yaml:"kata" json:"kata"`
-	DevContainer DevContainerConfig `yaml:"devcontainer" json:"devcontainer"`
-	Docker       DockerConfig       `yaml:"docker" json:"docker"`
-	K8s          K8sConfig          `yaml:"k8s" json:"k8s"`
+	Run            RunSection           `yaml:"run" json:"run"`
+	Phases         PhasesConfig         `yaml:"phases" json:"phases"`
+	Telemetry      TelemetryConfig      `yaml:"telemetry" json:"telemetry"`
+	Collector      CollectorConfig      `yaml:"collector" json:"collector"`
+	Artifacts      ArtifactsConfig      `yaml:"artifacts" json:"artifacts"`
+	Platform       PlatformConfig       `yaml:"platform" json:"platform"`
+	Execution      ExecutionConfig      `yaml:"execution" json:"execution"`
+	Backend        BackendConfig        `yaml:"backend" json:"backend"`
+	Runtime        RuntimeConfig        `yaml:"runtime" json:"runtime"`
+	Kata           KataConfig           `yaml:"kata" json:"kata"`
+	DevContainer   DevContainerConfig   `yaml:"devcontainer" json:"devcontainer"`
+	Docker         DockerConfig         `yaml:"docker" json:"docker"`
+	K8s            K8sConfig            `yaml:"k8s" json:"k8s"`
 	AppleContainer AppleContainerConfig `yaml:"apple_container" json:"apple_container"`
-	OrbStack     OrbStackConfig     `yaml:"orbstack" json:"orbstack"`
-	OpenSandbox  OpenSandboxConfig  `yaml:"opensandbox" json:"opensandbox"`
-	Sandbox      SandboxConfig      `yaml:"sandbox" json:"sandbox"`
-	Provider     ProviderConfig     `yaml:"provider" json:"provider"`
-	Go           GoConfig           `yaml:"go" json:"go"`
-	Metadata     map[string]string  `yaml:"metadata,omitempty" json:"metadata,omitempty"`
+	OrbStack       OrbStackConfig       `yaml:"orbstack" json:"orbstack"`
+	OpenSandbox    OpenSandboxConfig    `yaml:"opensandbox" json:"opensandbox"`
+	Sandbox        SandboxConfig        `yaml:"sandbox" json:"sandbox"`
+	Provider       ProviderConfig       `yaml:"provider" json:"provider"`
+	Go             GoConfig             `yaml:"go" json:"go"`
+	Metadata       map[string]string    `yaml:"metadata,omitempty" json:"metadata,omitempty"`
 }
 
 type RunSection struct {
@@ -258,6 +311,12 @@ type BackendConfig struct {
 
 type RuntimeConfig struct {
 	Profile RuntimeProfile `yaml:"profile" json:"profile"`
+}
+
+type ExecutionConfig struct {
+	Backend        ExecutionBackend        `yaml:"backend" json:"backend"`
+	Provider       ProviderKind            `yaml:"provider" json:"provider"`
+	RuntimeProfile ExecutionRuntimeProfile `yaml:"runtime_profile" json:"runtime_profile"`
 }
 
 type KataConfig struct {
@@ -424,39 +483,41 @@ type ResourcesPolicy struct {
 }
 
 type FeatureSet struct {
-	GoBasicRunner       bool `yaml:"go_basic_runner" json:"go_basic_runner"`
-	GoManualSDK         bool `yaml:"go_manual_sdk" json:"go_manual_sdk"`
-	GoAutoSDKBridge     bool `yaml:"go_autosdk_bridge" json:"go_autosdk_bridge"`
-	OBIEBPF             bool `yaml:"obi_ebpf" json:"obi_ebpf"`
-	K8sOperatorGoInject bool `yaml:"k8s_operator_go_inject" json:"k8s_operator_go_inject"`
-	LocalDockerMode     bool `yaml:"local_docker_mode" json:"local_docker_mode"`
-	LocalDirectMode     bool `yaml:"local_direct_mode" json:"local_direct_mode"`
-	STGLinuxMode        bool `yaml:"stg_linux_mode" json:"stg_linux_mode"`
-	LocalAppleContainerMode bool `yaml:"local_apple_container_mode" json:"local_apple_container_mode"`
+	GoBasicRunner            bool `yaml:"go_basic_runner" json:"go_basic_runner"`
+	GoManualSDK              bool `yaml:"go_manual_sdk" json:"go_manual_sdk"`
+	GoAutoSDKBridge          bool `yaml:"go_autosdk_bridge" json:"go_autosdk_bridge"`
+	OBIEBPF                  bool `yaml:"obi_ebpf" json:"obi_ebpf"`
+	K8sOperatorGoInject      bool `yaml:"k8s_operator_go_inject" json:"k8s_operator_go_inject"`
+	LocalDockerMode          bool `yaml:"local_docker_mode" json:"local_docker_mode"`
+	LocalDirectMode          bool `yaml:"local_direct_mode" json:"local_direct_mode"`
+	STGLinuxMode             bool `yaml:"stg_linux_mode" json:"stg_linux_mode"`
+	LocalAppleContainerMode  bool `yaml:"local_apple_container_mode" json:"local_apple_container_mode"`
 	LocalOrbStackMachineMode bool `yaml:"local_orbstack_machine_mode" json:"local_orbstack_machine_mode"`
 }
 
 type ExecutionTarget struct {
-	OS               string   `json:"os,omitempty"`
-	Arch             string   `json:"arch,omitempty"`
-	Mode             RunMode  `json:"mode,omitempty"`
-	BackendKind      string   `json:"backend_kind,omitempty"`
-	ProviderName     string   `json:"provider_name,omitempty"`
-	BackendProvider  string   `json:"backend_provider,omitempty"`
-	RuntimeProfile   string   `json:"runtime_profile,omitempty"`
-	RuntimeClassName string   `json:"runtime_class_name,omitempty"`
-	RuntimeKind      string   `json:"runtime_kind,omitempty"`
-	Virtualization   string   `json:"virtualization,omitempty"`
-	LocalPlatform    string   `json:"local_platform,omitempty"`
-	MachineName      string   `json:"machine_name,omitempty"`
-	NetworkMode      string   `json:"network_mode,omitempty"`
-	ContainerID      string   `json:"container_id,omitempty"`
-	ContainerImage   string   `json:"container_image,omitempty"`
-	ImageDigest      string   `json:"image_digest,omitempty"`
-	Capabilities     []string `json:"capabilities,omitempty"`
-	InContainer      bool     `json:"in_container,omitempty"`
-	InKubernetes     bool     `json:"in_kubernetes,omitempty"`
-	DockerAvailable  bool     `json:"docker_available,omitempty"`
+	OS                 string          `json:"os,omitempty"`
+	Arch               string          `json:"arch,omitempty"`
+	Mode               RunMode         `json:"mode,omitempty"`
+	BackendKind        string          `json:"backend_kind,omitempty"`
+	ProviderName       string          `json:"provider_name,omitempty"`
+	BackendProvider    string          `json:"backend_provider,omitempty"`
+	RuntimeProfile     string          `json:"runtime_profile,omitempty"`
+	RuntimeClassName   string          `json:"runtime_class_name,omitempty"`
+	RuntimeKind        string          `json:"runtime_kind,omitempty"`
+	Virtualization     string          `json:"virtualization,omitempty"`
+	LocalPlatform      string          `json:"local_platform,omitempty"`
+	MachineName        string          `json:"machine_name,omitempty"`
+	NetworkMode        string          `json:"network_mode,omitempty"`
+	ContainerID        string          `json:"container_id,omitempty"`
+	ContainerImage     string          `json:"container_image,omitempty"`
+	ImageDigest        string          `json:"image_digest,omitempty"`
+	Capabilities       []string        `json:"capabilities,omitempty"`
+	InContainer        bool            `json:"in_container,omitempty"`
+	InKubernetes       bool            `json:"in_kubernetes,omitempty"`
+	DockerAvailable    bool            `json:"docker_available,omitempty"`
+	Execution          ExecutionConfig `json:"execution,omitempty"`
+	CompatibilityLevel SupportLevel    `json:"compatibility_level,omitempty"`
 }
 
 type RunRequest struct {
@@ -468,6 +529,25 @@ type RunRequest struct {
 	Policy      PolicyConfig
 	Target      ExecutionTarget
 	Version     VersionInfo
+}
+
+type CompatibilityResult struct {
+	Level       SupportLevel `json:"level"`
+	MatchedRule string       `json:"matched_rule,omitempty"`
+	Message     string       `json:"message,omitempty"`
+}
+
+type CapabilityProbeResult struct {
+	OK       bool           `json:"ok"`
+	Details  map[string]any `json:"details,omitempty"`
+	Warnings []string       `json:"warnings,omitempty"`
+	Errors   []string       `json:"errors,omitempty"`
+}
+
+type ExecutionResolution struct {
+	Config        ExecutionConfig       `json:"config"`
+	Compatibility CompatibilityResult   `json:"compatibility"`
+	Capability    CapabilityProbeResult `json:"capability"`
 }
 
 type VersionInfo struct {
@@ -656,21 +736,24 @@ type SandboxSnapshot struct {
 }
 
 type ContextArtifact struct {
-	RunID           string           `json:"run_id"`
-	Attempt         int              `json:"attempt"`
-	SandboxID       string           `json:"sandbox_id"`
-	WorkspaceID     string           `json:"workspace_id,omitempty"`
-	Mode            string           `json:"mode"`
-	ServiceName     string           `json:"service_name"`
-	GitSHA          string           `json:"git_sha,omitempty"`
-	ImageDigest     string           `json:"image_digest,omitempty"`
-	StartedAt       time.Time        `json:"started_at"`
-	OriginalCommand []string         `json:"original_command"`
-	OTLPEndpoint    string           `json:"otlp_endpoint"`
-	Target          ExecutionTarget  `json:"target"`
-	FeatureGates    FeatureSet       `json:"feature_gates"`
-	Backend         *BackendSnapshot `json:"backend,omitempty"`
-	Sandbox         *SandboxSnapshot `json:"sandbox,omitempty"`
+	RunID           string                `json:"run_id"`
+	Attempt         int                   `json:"attempt"`
+	SandboxID       string                `json:"sandbox_id"`
+	WorkspaceID     string                `json:"workspace_id,omitempty"`
+	Mode            string                `json:"mode"`
+	ServiceName     string                `json:"service_name"`
+	GitSHA          string                `json:"git_sha,omitempty"`
+	ImageDigest     string                `json:"image_digest,omitempty"`
+	StartedAt       time.Time             `json:"started_at"`
+	OriginalCommand []string              `json:"original_command"`
+	OTLPEndpoint    string                `json:"otlp_endpoint"`
+	Execution       ExecutionConfig       `json:"execution"`
+	Compatibility   CompatibilityResult   `json:"compatibility"`
+	CapabilityProbe CapabilityProbeResult `json:"capability_probe"`
+	Target          ExecutionTarget       `json:"target"`
+	FeatureGates    FeatureSet            `json:"feature_gates"`
+	Backend         *BackendSnapshot      `json:"backend,omitempty"`
+	Sandbox         *SandboxSnapshot      `json:"sandbox,omitempty"`
 }
 
 type ReplayManifest struct {

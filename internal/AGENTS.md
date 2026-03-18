@@ -6,6 +6,8 @@ Package map:
 
 - `cli`: CLI parsing, subcommand dispatch, request assembly
 - `config`: defaults, env overrides, normalization, validation
+- `compat`: planned static compatibility matrix for `backend/provider/runtime_profile`
+- `capability`: planned backend-specific environment probes before execution
 - `model`: enums and shared DTO contracts
 - `phase`: run state machine and end-to-end orchestration
 - `backend`: sandbox interface plus Dev Container and OpenSandbox providers
@@ -27,4 +29,7 @@ Rules:
 - public reuse belongs in `pkg/`, not `internal/`
 - when changing shared contracts, update `internal/model` first
 - keep provider lifecycle in `backend`, command execution in `executor`, and phase semantics in `phase`
+- execution must converge on the standard triple `backend/provider/runtime_profile`
+- the required validation order is schema -> compatibility matrix -> capability probe -> RunEngine
+- `provider` refines backend behavior; it does not determine backend class
 - if a user-visible run concept changes, expect coordinated updates across `model`, `config`, `phase`, `artifact`, `telemetry`, samples, and tests

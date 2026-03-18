@@ -1,0 +1,32 @@
+package compat
+
+import "github.com/lotosli/sandbox-runner/internal/model"
+
+var AllowedRules = []CompatibilityRule{
+	{Backend: model.ExecutionBackendDirect, Provider: model.ProviderNative, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "local direct process execution"},
+	{Backend: model.ExecutionBackendDocker, Provider: model.ProviderNative, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "standard Docker"},
+	{Backend: model.ExecutionBackendDocker, Provider: model.ProviderOrbStack, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "OrbStack Docker engine"},
+	{Backend: model.ExecutionBackendDocker, Provider: model.ProviderDockerDesktop, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "Docker Desktop"},
+	{Backend: model.ExecutionBackendDocker, Provider: model.ProviderColima, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "Colima"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderNative, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "existing Kubernetes cluster"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderNative, RuntimeProfile: model.ExecutionRuntimeProfileKata, Level: model.SupportConditional, Message: "requires cluster runtime support"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderNative, RuntimeProfile: model.ExecutionRuntimeProfileGVisor, Level: model.SupportConditional, Message: "requires cluster runtime support"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderNative, RuntimeProfile: model.ExecutionRuntimeProfileFirecracker, Level: model.SupportConditional, Message: "requires cluster runtime support"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderOrbStack, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "OrbStack local Kubernetes"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderKindKind, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "kind local cluster"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderMinikube, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "minikube local cluster"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderDockerDesktop, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "Docker Desktop Kubernetes"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderGKE, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "GKE"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderGKE, RuntimeProfile: model.ExecutionRuntimeProfileKata, Level: model.SupportConditional, Message: "requires runtimeClass or sandbox support"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderGKE, RuntimeProfile: model.ExecutionRuntimeProfileGVisor, Level: model.SupportConditional, Message: "requires GKE Sandbox or gVisor support"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderEKS, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "EKS"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderEKS, RuntimeProfile: model.ExecutionRuntimeProfileKata, Level: model.SupportConditional, Message: "requires cluster runtime support"},
+	{Backend: model.ExecutionBackendK8s, Provider: model.ProviderAKS, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "AKS"},
+	{Backend: model.ExecutionBackendOpenSandbox, Provider: model.ProviderOpenSandbox, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "standard OpenSandbox mode"},
+	{Backend: model.ExecutionBackendOpenSandbox, Provider: model.ProviderOpenSandbox, RuntimeProfile: model.ExecutionRuntimeProfileKata, Level: model.SupportConditional, Message: "depends on provider runtime support"},
+	{Backend: model.ExecutionBackendOpenSandbox, Provider: model.ProviderOpenSandbox, RuntimeProfile: model.ExecutionRuntimeProfileGVisor, Level: model.SupportConditional, Message: "depends on provider runtime support"},
+	{Backend: model.ExecutionBackendOpenSandbox, Provider: model.ProviderOpenSandbox, RuntimeProfile: model.ExecutionRuntimeProfileFirecracker, Level: model.SupportConditional, Message: "depends on provider runtime support"},
+	{Backend: model.ExecutionBackendDevContainer, Provider: model.ProviderNative, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "devcontainer CLI"},
+	{Backend: model.ExecutionBackendAppleContainer, Provider: model.ProviderNative, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "Apple container CLI"},
+	{Backend: model.ExecutionBackendMachine, Provider: model.ProviderOrbStack, RuntimeProfile: model.ExecutionRuntimeProfileDefault, Level: model.SupportSupported, Message: "OrbStack Linux machine"},
+}

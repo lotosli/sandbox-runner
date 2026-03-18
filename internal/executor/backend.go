@@ -97,14 +97,18 @@ loop:
 					LineNo:         lineNo,
 					Line:           proc.Redact(truncateLine(chunk.Line, spec.LogLineMaxBytes)),
 					Attributes: map[string]string{
-						"backend.kind":            string(spec.RunConfig.Backend.Kind),
-						"backend.provider":        backendProviderName(spec.RunConfig),
-						"runtime.profile":         string(spec.RunConfig.Runtime.Profile),
-						"sandbox.backend.kind":    string(spec.RunConfig.Backend.Kind),
-						"sandbox.provider.name":   providerName(spec.RunConfig),
-						"sandbox.runtime.kind":    string(spec.RunConfig.OpenSandbox.Runtime),
-						"sandbox.runtime.profile": string(spec.RunConfig.Runtime.Profile),
-						"sandbox.runtime.class":   spec.RunConfig.Kata.RuntimeClassName,
+						"execution.backend":             string(spec.RunConfig.Execution.Backend),
+						"execution.provider":            string(spec.RunConfig.Execution.Provider),
+						"execution.runtime_profile":     string(spec.RunConfig.Execution.RuntimeProfile),
+						"execution.compatibility_level": spec.RunConfig.Metadata["execution.compatibility_level"],
+						"backend.kind":                  string(spec.RunConfig.Backend.Kind),
+						"backend.provider":              backendProviderName(spec.RunConfig),
+						"runtime.profile":               string(spec.RunConfig.Runtime.Profile),
+						"sandbox.backend.kind":          string(spec.RunConfig.Backend.Kind),
+						"sandbox.provider.name":         providerName(spec.RunConfig),
+						"sandbox.runtime.kind":          string(spec.RunConfig.OpenSandbox.Runtime),
+						"sandbox.runtime.profile":       string(spec.RunConfig.Runtime.Profile),
+						"sandbox.runtime.class":         spec.RunConfig.Kata.RuntimeClassName,
 					},
 				})
 			}
@@ -137,7 +141,7 @@ loop:
 		StderrLines: stderrLines,
 		Target:      e.resultTarget(sandboxID),
 		Metadata: map[string]any{
-			"backend_kind":     spec.RunConfig.Backend.Kind,
+			"backend_kind":     spec.RunConfig.Execution.Backend,
 			"provider":         providerName(spec.RunConfig),
 			"backend_provider": backendProviderName(spec.RunConfig),
 			"exec_provider_id": handle.ExecID,
@@ -187,16 +191,18 @@ func (e BackendExecutor) resultTarget(sandboxID string) model.ExecutionTarget {
 		image = e.runCfg.Run.Image
 	}
 	target := model.ExecutionTarget{
-		OS:               "linux",
-		Arch:             e.target.Arch,
-		Mode:             e.runCfg.Platform.RunMode,
-		BackendKind:      string(e.runCfg.Backend.Kind),
-		ProviderName:     providerName(e.runCfg),
-		BackendProvider:  backendProviderName(e.runCfg),
-		RuntimeProfile:   string(e.runCfg.Runtime.Profile),
-		RuntimeClassName: e.runCfg.Kata.RuntimeClassName,
-		ContainerID:      sandboxID,
-		ContainerImage:   image,
+		OS:                 "linux",
+		Arch:               e.target.Arch,
+		Mode:               e.runCfg.Platform.RunMode,
+		BackendKind:        string(e.runCfg.Execution.Backend),
+		ProviderName:       providerName(e.runCfg),
+		BackendProvider:    backendProviderName(e.runCfg),
+		RuntimeProfile:     string(e.runCfg.Execution.RuntimeProfile),
+		RuntimeClassName:   e.runCfg.Kata.RuntimeClassName,
+		ContainerID:        sandboxID,
+		ContainerImage:     image,
+		Execution:          e.runCfg.Execution,
+		CompatibilityLevel: model.SupportLevel(e.runCfg.Metadata["execution.compatibility_level"]),
 	}
 	switch e.runCfg.Backend.Kind {
 	case model.BackendKindDevContainer:
@@ -226,27 +232,27 @@ func (e BackendExecutor) resultTarget(sandboxID string) model.ExecutionTarget {
 }
 
 func providerName(cfg model.RunConfig) string {
-	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
-		return "opensandbox"
-	}
-	if cfg.Backend.Kind == model.BackendKindOrbStackMachine {
-		return string(cfg.Backend.Kind)
+	if cfg.Execution.Provider != "" {
+		return string(cfg.Execution.Provider)
 	}
 	return string(cfg.Backend.Kind)
 }
 
 func backendProviderName(cfg model.RunConfig) string {
+	if cfg.Execution.Provider != "" {
+		return string(cfg.Execution.Provider)
+	}
 	switch cfg.Backend.Kind {
 	case model.BackendKindDocker:
 		if cfg.Docker.Provider == model.DockerProviderOrbStack {
 			return "orbstack"
 		}
-		return "docker"
+		return "native"
 	case model.BackendKindK8s:
 		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
 			return "orbstack"
 		}
-		return "k8s"
+		return "native"
 	case model.BackendKindOrbStackMachine:
 		return "orbstack"
 	case model.BackendKindDirect:
