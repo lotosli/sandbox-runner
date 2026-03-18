@@ -10,6 +10,15 @@ make dist
 
 - `make build` builds the current host binary in the repository root
 - `make dist` builds the cross-platform release-style binaries under `dist/`
+- `BUILD_TAGS=s3` enables the optional S3 artifact uploader in a custom build
+
+Examples:
+
+```bash
+make build
+make build BUILD_TAGS=s3
+make dist BUILD_TAGS=s3
+```
 
 ## Current Dist Outputs
 
@@ -25,6 +34,8 @@ make dist
 - `dist/SHA256SUMS`
 
 These names are the release contract. CI should reuse them exactly.
+
+Default release binaries intentionally omit the S3 uploader so the common binary stays smaller. If you need artifact upload to S3-compatible storage, build with `BUILD_TAGS=s3`.
 
 ## Version Metadata
 
