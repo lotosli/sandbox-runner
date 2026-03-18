@@ -177,7 +177,7 @@ func DefaultPolicyConfig() model.PolicyConfig {
 			"execute-offline": {AllowDomains: []string{}},
 		},
 		Tools: model.ToolsPolicy{
-			Allow:        []string{"python", "pytest", "node", "npm", "java", "mvn", "bash", "sh", "go", "dlv"},
+			Allow:        []string{"python", "python3", "pytest", "opentelemetry-instrument", "node", "npm", "java", "mvn", "bash", "sh", "go", "dlv"},
 			DenyPatterns: []string{"rm -rf /", "curl * | sh", "wget * | sh"},
 		},
 		Secrets: model.SecretsPolicy{

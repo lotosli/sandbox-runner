@@ -40,11 +40,12 @@ func NewOpenSandboxBackend(cfg model.RunConfig) *OpenSandboxBackend {
 	if pollInterval <= 0 {
 		pollInterval = time.Second
 	}
+	httpTimeout := time.Duration(maxInt(cfg.OpenSandbox.CreateTimeoutSec, 30)) * time.Second
 	return &OpenSandboxBackend{
 		client: osclient.New(osclient.Config{
 			BaseURL:    cfg.OpenSandbox.BaseURL,
 			APIKey:     cfg.OpenSandbox.APIKey,
-			Timeout:    30 * time.Second,
+			Timeout:    httpTimeout,
 			MaxRetries: 0,
 		}),
 		cfg:          cfg,
@@ -710,7 +711,7 @@ func nonEmptyEntrypoint(entrypoint []string) []string {
 		return nil
 	}
 	if len(entrypoint) == 2 && (entrypoint[0] == "/bin/sh" || entrypoint[0] == "sh") && entrypoint[1] == "-lc" {
-		return nil
+		return []string{entrypoint[0], entrypoint[1], openSandboxKeepAliveCommand}
 	}
 	return entrypoint
 }
@@ -731,6 +732,8 @@ var _ MetadataProvider = (*OpenSandboxBackend)(nil)
 var _ ArtifactDownloader = (*OpenSandboxBackend)(nil)
 var _ ExecStatusProvider = (*OpenSandboxBackend)(nil)
 var _ ExecCanceler = (*OpenSandboxBackend)(nil)
+
+const openSandboxKeepAliveCommand = "if [ -x /bin/bash ] && [ ! -x /usr/bin/bash ]; then mkdir -p /usr/bin && ln -sf /bin/bash /usr/bin/bash; fi; trap 'exit 0' TERM INT; while true; do sleep 3600; done"
 
 func remoteTempPath(root, name string) string {
 	return path.Join(root, ".sandbox-runner", name)

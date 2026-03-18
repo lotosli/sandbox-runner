@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path"
 	"path/filepath"
@@ -119,7 +120,7 @@ func (b *AppleContainerBackend) Create(ctx context.Context, req CreateSandboxReq
 	for _, label := range b.labels(req) {
 		args = append(args, "--label", label)
 	}
-	args = append(args, image, "/bin/sh", "-lc", "trap 'exit 0' TERM INT; while true; do sleep 3600; done")
+	args = append(args, image, "/bin/sh", "-lc", appleContainerKeepAliveCommand)
 	if _, err := b.runCLI(ctx, "", args...); err != nil {
 		return SandboxInfo{}, wrapAppleContainerErr(model.ErrorCodeAppleContainerCreateFailed, err)
 	}
@@ -159,8 +160,12 @@ func (b *AppleContainerBackend) Stat(ctx context.Context, sandboxID string) (San
 func (b *AppleContainerBackend) Exec(ctx context.Context, sandboxID string, req ExecRequest) (ExecHandle, error) {
 	execID := fmt.Sprintf("%s-exec-%d", sandboxID, time.Now().UTC().UnixNano())
 	session := newLocalExecSession(execID)
+	execEnv, err := b.execEnv(ctx, sandboxID, req.Env)
+	if err != nil {
+		return ExecHandle{}, wrapAppleContainerErr(model.ErrorCodeAppleContainerExecFailed, err)
+	}
 	args := []string{"exec"}
-	for _, entry := range sortedEnv(req.Env) {
+	for _, entry := range sortedEnv(execEnv) {
 		args = append(args, "-e", entry)
 	}
 	if cwd := b.translateCwd(req.Cwd); cwd != "" {
@@ -229,7 +234,7 @@ func (b *AppleContainerBackend) Resume(ctx context.Context, sandboxID string) er
 }
 
 func (b *AppleContainerBackend) Delete(ctx context.Context, sandboxID string) error {
-	_, err := b.runCLI(ctx, "", "delete", sandboxID)
+	_, err := b.runCLI(ctx, "", "delete", "--force", sandboxID)
 	return wrapAppleContainerErr(model.ErrorCodeAppleContainerDeleteFailed, err)
 }
 
@@ -354,6 +359,37 @@ func (b *AppleContainerBackend) labels(req CreateSandboxRequest) []string {
 	return labels
 }
 
+func (b *AppleContainerBackend) execEnv(ctx context.Context, sandboxID string, overrides map[string]string) (map[string]string, error) {
+	baseEnv, err := b.inspectEnv(ctx, sandboxID)
+	if err != nil {
+		return nil, err
+	}
+	merged := map[string]string{}
+	for key, value := range baseEnv {
+		merged[key] = value
+	}
+	keys := make([]string, 0, len(overrides))
+	for key := range overrides {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		merged[key] = expandExecEnvValue(overrides[key], merged, baseEnv)
+	}
+	return merged, nil
+}
+
+func (b *AppleContainerBackend) inspectEnv(ctx context.Context, sandboxID string) (map[string]string, error) {
+	output, err := b.runCLI(ctx, "", "inspect", sandboxID)
+	if err != nil {
+		if _, ok := b.lookupSandbox(sandboxID); ok {
+			return map[string]string{}, nil
+		}
+		return nil, wrapAppleContainerErr(model.ErrorCodeAppleContainerExecFailed, err)
+	}
+	return parseAppleContainerInspectEnv(output), nil
+}
+
 func (b *AppleContainerBackend) runCLI(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, b.binary, args...)
 	if dir != "" {
@@ -414,6 +450,25 @@ func parseAppleContainerInspect(output []byte) (SandboxInfo, bool) {
 	return SandboxInfo{}, false
 }
 
+func parseAppleContainerInspectEnv(output []byte) map[string]string {
+	var payload any
+	if err := json.Unmarshal(output, &payload); err != nil {
+		return map[string]string{}
+	}
+	switch typed := payload.(type) {
+	case []any:
+		if len(typed) == 0 {
+			return map[string]string{}
+		}
+		if item, ok := typed[0].(map[string]any); ok {
+			return appleSandboxEnvFromMap(item)
+		}
+	case map[string]any:
+		return appleSandboxEnvFromMap(typed)
+	}
+	return map[string]string{}
+}
+
 func appleSandboxInfoFromMap(item map[string]any) SandboxInfo {
 	info := SandboxInfo{
 		ID:       firstString(item, "id", "ID", "name", "Name"),
@@ -430,6 +485,46 @@ func appleSandboxInfoFromMap(item map[string]any) SandboxInfo {
 		}
 	}
 	return info
+}
+
+func appleSandboxEnvFromMap(item map[string]any) map[string]string {
+	configuration, ok := item["configuration"].(map[string]any)
+	if !ok {
+		return map[string]string{}
+	}
+	initProcess, ok := configuration["initProcess"].(map[string]any)
+	if !ok {
+		return map[string]string{}
+	}
+	values, ok := initProcess["environment"].([]any)
+	if !ok {
+		return map[string]string{}
+	}
+	env := map[string]string{}
+	for _, value := range values {
+		text, ok := value.(string)
+		if !ok {
+			continue
+		}
+		parts := strings.SplitN(text, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		env[parts[0]] = parts[1]
+	}
+	return env
+}
+
+func expandExecEnvValue(value string, overrides map[string]string, base map[string]string) string {
+	return os.Expand(value, func(key string) string {
+		if v, ok := overrides[key]; ok {
+			return v
+		}
+		if v, ok := base[key]; ok {
+			return v
+		}
+		return ""
+	})
 }
 
 func firstString(item map[string]any, keys ...string) string {
@@ -457,6 +552,8 @@ func wrapAppleContainerErr(code model.ErrorCode, err error) error {
 		Cause:       err,
 	}
 }
+
+const appleContainerKeepAliveCommand = "if [ -x /usr/local/go/bin/go ] && [ ! -x /usr/bin/go ]; then mkdir -p /usr/bin && ln -sf /usr/local/go/bin/go /usr/bin/go; fi; trap 'exit 0' TERM INT; while true; do sleep 3600; done"
 
 var _ SandboxBackend = (*AppleContainerBackend)(nil)
 var _ WorkspaceSyncer = (*AppleContainerBackend)(nil)

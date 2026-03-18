@@ -29,7 +29,9 @@ tools:
   allow:
     - go
     - python
+    - python3
     - pytest
+    - opentelemetry-instrument
     - node
     - npm
     - pnpm

@@ -1,0 +1,80 @@
+run:
+  service_name: sandbox-runner-java-apple-container-sample
+  mode: local
+  attempt: 1
+  sandbox_id: apple-java
+  workspace_dir: .
+  artifact_dir: .sandbox-runner
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - ./.sample-bin/java-run-apple-container
+    - execute
+  language: shell
+  image: eclipse-temurin:21-jdk
+  extra_env:
+    PATH: /workspace/.sample-bin:/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+phases:
+  prepare:
+    enabled: true
+    timeout_sec: 120
+  setup:
+    enabled: true
+    timeout_sec: 300
+    network_profile: setup-online
+  execute:
+    enabled: true
+    timeout_sec: 300
+    network_profile: execute-offline
+  verify:
+    enabled: true
+    timeout_sec: 120
+    smoke_command:
+      - ./.sample-bin/java-run-apple-container
+      - verify
+    expected_artifacts:
+      - artifacts/proof.json
+  collect:
+    enabled: true
+    timeout_sec: 120
+
+collector:
+  mode: skip
+
+execution:
+  backend: apple-container
+  provider: native
+  runtime_profile: default
+
+backend:
+  kind: apple-container
+
+runtime:
+  profile: apple-container
+
+platform:
+  target_os: darwin
+  target_arch: arm64
+  run_mode: local_apple_container
+
+apple_container:
+  binary: container
+  workspace_root: /workspace
+  create_timeout_sec: 120
+  exec_timeout_sec: 300
+  cleanup_mode: delete
+  upload_strategy: tar
+  download_strategy: tar
+
+sandbox:
+  env: {}
+
+provider:
+  prefer_opensandbox: false
+  require_capabilities:
+    - file_upload
+    - stream_logs
+    - oci_image
+  fallback_order:
+    - apple-container

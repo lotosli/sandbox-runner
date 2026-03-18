@@ -1,0 +1,15 @@
+#!/bin/sh
+set -eu
+
+phase="${1:-execute}"
+root_dir="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
+out_dir="$root_dir/out"
+
+if [ -n "${JAVA_TOOL_OPTIONS:-}" ]; then
+  export SAMPLE_JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS"
+  unset JAVA_TOOL_OPTIONS
+fi
+
+mkdir -p "$out_dir"
+javac -d "$out_dir" "$root_dir/src/main/java/sample/Main.java"
+exec java -cp "$out_dir" sample.Main "$phase"

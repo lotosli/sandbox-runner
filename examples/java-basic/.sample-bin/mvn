@@ -1,0 +1,3 @@
+#!/bin/sh
+set -eu
+printf 'sample mvn shim: skipping dependency resolution\n' >&2

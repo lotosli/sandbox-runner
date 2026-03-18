@@ -1,0 +1,71 @@
+run:
+  service_name: sandbox-runner-node-docker-sample
+  mode: local
+  attempt: 1
+  sandbox_id: docker-node
+  workspace_dir: .
+  artifact_dir: .sandbox-runner
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - node
+    - app.js
+    - execute
+  language: auto
+  image: node:22-alpine
+
+phases:
+  prepare:
+    enabled: true
+    timeout_sec: 120
+  setup:
+    enabled: true
+    timeout_sec: 300
+    network_profile: setup-online
+  execute:
+    enabled: true
+    timeout_sec: 300
+    network_profile: execute-offline
+  verify:
+    enabled: true
+    timeout_sec: 120
+    smoke_command:
+      - node
+      - app.js
+      - verify
+    expected_artifacts:
+      - artifacts/proof.json
+  collect:
+    enabled: true
+    timeout_sec: 120
+
+collector:
+  mode: skip
+
+execution:
+  backend: docker
+  provider: native
+  runtime_profile: default
+
+backend:
+  kind: docker
+
+runtime:
+  profile: native
+
+platform:
+  run_mode: local_docker
+
+docker:
+  provider: docker
+  binary: docker
+  context: default
+
+sandbox:
+  env: {}
+
+provider:
+  prefer_opensandbox: false
+  require_capabilities: []
+  fallback_order:
+    - docker

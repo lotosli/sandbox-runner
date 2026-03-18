@@ -195,6 +195,55 @@ func TestOpenSandboxBackendCreatePropagatesKataRuntimeMetadata(t *testing.T) {
 	}
 }
 
+func TestOpenSandboxBackendCreateExpandsDefaultShellEntrypointToKeepAlive(t *testing.T) {
+	var payload map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/sandboxes" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "sbx-shell",
+			"status": map[string]any{
+				"state": "running",
+			},
+		})
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultRunConfig()
+	cfg.Backend.Kind = model.BackendKindOpenSandbox
+	cfg.Platform.RunMode = model.RunModeLocalOpenSandboxDocker
+	cfg.OpenSandbox.BaseURL = server.URL
+	cfg.OpenSandbox.Runtime = model.OpenSandboxRuntimeDocker
+
+	backend := NewOpenSandboxBackend(cfg)
+	_, err := backend.Create(context.Background(), CreateSandboxRequest{
+		RunID:      "run-shell",
+		Attempt:    1,
+		Image:      "alpine:3.20",
+		Entrypoint: []string{"/bin/sh", "-lc"},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	entrypoint, ok := payload["entrypoint"].([]any)
+	if !ok {
+		t.Fatalf("entrypoint = %#v, want array", payload["entrypoint"])
+	}
+	if len(entrypoint) != 3 {
+		t.Fatalf("entrypoint len = %d, want 3", len(entrypoint))
+	}
+	if entrypoint[0] != "/bin/sh" || entrypoint[1] != "-lc" || entrypoint[2] != openSandboxKeepAliveCommand {
+		t.Fatalf("entrypoint = %#v, want expanded keepalive shell", entrypoint)
+	}
+}
+
 func serverURLWithoutScheme(r *http.Request) string {
 	return r.Host + "/sandboxes/sbx-1/proxy/44772"
 }

@@ -1,0 +1,8 @@
+{
+  "name": "sandbox-runner-node-basic",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "@opentelemetry/auto-instrumentations-node": "file:otel-shims/auto-instrumentations-node"
+  }
+}

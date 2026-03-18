@@ -25,6 +25,17 @@ func TestParseAppleContainerInspect(t *testing.T) {
 	}
 }
 
+func TestParseAppleContainerInspectEnv(t *testing.T) {
+	output := []byte(`{"configuration":{"initProcess":{"environment":["PATH=/usr/local/go/bin:/usr/bin","GOPATH=/go"]}}}`)
+	env := parseAppleContainerInspectEnv(output)
+	if env["PATH"] != "/usr/local/go/bin:/usr/bin" {
+		t.Fatalf("PATH = %q, want /usr/local/go/bin:/usr/bin", env["PATH"])
+	}
+	if env["GOPATH"] != "/go" {
+		t.Fatalf("GOPATH = %q, want /go", env["GOPATH"])
+	}
+}
+
 func TestParseOrbStackMachineList(t *testing.T) {
 	output := []byte(`[{"name":"ai-runner-dev","status":"running","distro":"ubuntu"}]`)
 	info, ok := parseOrbStackMachineList(output, "ai-runner-dev")

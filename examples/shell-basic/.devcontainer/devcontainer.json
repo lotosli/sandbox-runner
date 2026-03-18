@@ -1,0 +1,6 @@
+{
+  "name": "sandbox-runner-shell-basic",
+  "image": "alpine:3.20",
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind"
+}

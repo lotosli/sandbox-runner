@@ -1,0 +1,6 @@
+{
+  "name": "sandbox-runner-java-basic",
+  "image": "eclipse-temurin:21-jdk",
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind"
+}

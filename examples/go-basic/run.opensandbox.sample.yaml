@@ -1,0 +1,82 @@
+run:
+  service_name: sandbox-runner-go-opensandbox-sample
+  mode: local
+  attempt: 1
+  sandbox_id: opensandbox-go
+  workspace_dir: .
+  artifact_dir: .sandbox-runner
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - go
+    - run
+    - .
+    - execute
+  language: auto
+  image: golang:1.25.7
+
+phases:
+  prepare:
+    enabled: true
+    timeout_sec: 120
+  setup:
+    enabled: true
+    timeout_sec: 300
+    network_profile: setup-online
+  execute:
+    enabled: true
+    timeout_sec: 300
+    network_profile: execute-offline
+  verify:
+    enabled: true
+    timeout_sec: 120
+    smoke_command:
+      - go
+      - run
+      - .
+      - verify
+    expected_artifacts:
+      - artifacts/proof.json
+  collect:
+    enabled: true
+    timeout_sec: 120
+
+collector:
+  mode: skip
+
+execution:
+  backend: opensandbox
+  provider: opensandbox
+  runtime_profile: default
+
+backend:
+  kind: opensandbox
+
+runtime:
+  profile: native
+
+platform:
+  run_mode: local_opensandbox_docker
+
+opensandbox:
+  base_url: http://127.0.0.1:8080
+  runtime: docker
+  network_mode: bridge
+  create_timeout_sec: 120
+  poll_interval_ms: 1000
+  cleanup_mode: delete
+  ttl_sec: 1800
+  workspace_root: /workspace
+  upload_strategy: tar
+  download_strategy: tar
+
+sandbox:
+  env: {}
+
+provider:
+  prefer_opensandbox: true
+  require_capabilities:
+    - file_upload
+    - stream_logs
+  fallback_order:
+    - opensandbox
