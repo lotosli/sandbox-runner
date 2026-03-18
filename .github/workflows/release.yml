@@ -1,0 +1,70 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build release-style binaries
+        run: make dist
+
+      - name: Upload dist workflow artifacts
+        uses: actions/upload-artifact@v6
+        with:
+          name: sandbox-runner-dist-${{ github.ref_name }}
+          path: |
+            dist/sandbox-runner-*
+            dist/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Create or update GitHub Release
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          assets=(
+            dist/sandbox-runner-darwin-amd64
+            dist/sandbox-runner-darwin-arm64
+            dist/sandbox-runner-linux-amd64
+            dist/sandbox-runner-linux-arm64
+            dist/sandbox-runner-linux-arm-v7
+            dist/sandbox-runner-windows-amd64.exe
+            dist/sandbox-runner-windows-arm64.exe
+            dist/SHA256SUMS
+          )
+
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "${assets[@]}" --clobber
+          else
+            gh release create "$tag" "${assets[@]}" --title "$tag" --generate-notes
+          fi
