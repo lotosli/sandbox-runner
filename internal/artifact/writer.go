@@ -22,6 +22,7 @@ const (
 	StderrFileName         = "stderr.jsonl"
 	ResultsFileName        = "results.json"
 	ReplayFileName         = "replay.json"
+	IndexFileName          = "index.json"
 	ArtifactsDirName       = "artifacts"
 	ProviderFileName       = "provider.json"
 	BackendProfileFileName = "backend-profile.json"
@@ -123,6 +124,10 @@ func (w *Writer) WriteResults(result *model.RunResult) error {
 
 func (w *Writer) WriteReplay(replay model.ReplayManifest) error {
 	return w.WriteJSON(ReplayFileName, replay)
+}
+
+func (w *Writer) WriteIndex(index model.ArtifactIndex) error {
+	return w.WriteJSON(IndexFileName, index)
 }
 
 func (w *Writer) WriteProvider(value model.ProviderArtifact) error {

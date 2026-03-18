@@ -765,6 +765,21 @@ type ReplayManifest struct {
 	Notes                     []string `json:"notes"`
 }
 
+type ArtifactIndex struct {
+	SchemaVersion      int               `json:"schema_version"`
+	RunID              string            `json:"run_id"`
+	Attempt            int               `json:"attempt"`
+	Status             RunStatus         `json:"status"`
+	Phase              Phase             `json:"phase"`
+	ExitCode           int               `json:"exit_code"`
+	CommandClass       string            `json:"command_class,omitempty"`
+	Execution          ExecutionConfig   `json:"execution"`
+	CompatibilityLevel SupportLevel      `json:"compatibility_level,omitempty"`
+	SuggestedReadOrder []string          `json:"suggested_read_order,omitempty"`
+	Files              map[string]string `json:"files"`
+	Artifacts          []ArtifactRef     `json:"artifacts,omitempty"`
+}
+
 type ProviderArtifact struct {
 	BackendKind         string                `json:"backend_kind"`
 	ProviderName        string                `json:"provider_name"`

@@ -4,8 +4,8 @@ run:
   run_id: ""
   attempt: 1
   sandbox_id: local-orbstack-docker
-  workspace_dir: .
-  artifact_dir: .sandbox-runner
+  workspace_dir: ..
+  artifact_dir: ../.sandbox-runner
   otlp_endpoint: http://127.0.0.1:4318
   deployment_environment: local
   command:

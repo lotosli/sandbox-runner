@@ -13,6 +13,8 @@ Backend-specific prerequisites vary. See [Backends and Platforms](./backends-and
 ```bash
 make build
 ./sandbox-runner run --config configs/run.sample.yaml --policy configs/policy.sample.yaml -- go test ./...
+./sandbox-runner run --json-summary --config configs/run.sample.yaml
+./sandbox-runner run --config configs/run.output.sample.yaml
 ./sandbox-runner doctor
 ./sandbox-runner --version
 ```
@@ -21,6 +23,8 @@ make build
 
 ```bash
 ./sandbox-runner run --config configs/run.sample.yaml --policy configs/policy.sample.yaml -- go test ./...
+./sandbox-runner run --json-summary --config configs/run.sample.yaml
+./sandbox-runner run --config configs/run.output.sample.yaml
 ./sandbox-runner validate --config configs/run.sample.yaml --policy configs/policy.sample.yaml
 ./sandbox-runner k8s render-job --config configs/run.sample.yaml --policy configs/policy.sample.yaml
 ./sandbox-runner doctor
@@ -29,7 +33,17 @@ make build
 
 ## Sample Configs
 
+Relative paths inside sample configs are resolved from the config file directory. That means both of these work and target the same repository workspace:
+
+```bash
+./sandbox-runner run --config configs/run.sample.yaml
+(cd dist && ./sandbox-runner-darwin-amd64 run --config ../configs/run.sample.yaml)
+```
+
+For agent or automation use, prefer `--json-summary`. It prints a stable JSON summary with the artifact directory, core file paths, and recent stdout/stderr tail lines. Every run also writes `index.json` into the artifact directory so an LLM can discover `results.json`, `phases.json`, `commands.jsonl`, `stdout.jsonl`, `stderr.jsonl`, and `replay.json` without hard-coding file names.
+
 - [`configs/run.sample.yaml`](../configs/run.sample.yaml): baseline direct/local sample
+- [`configs/run.output.sample.yaml`](../configs/run.output.sample.yaml): direct/local sample that emits visible stdout and stderr lines
 - [`configs/run.apple-container.sample.yaml`](../configs/run.apple-container.sample.yaml): Apple `container` backend
 - [`configs/run.devcontainer.sample.yaml`](../configs/run.devcontainer.sample.yaml): Dev Container CLI backend
 - [`configs/run.orbstack.docker.sample.yaml`](../configs/run.orbstack.docker.sample.yaml): Docker backend on OrbStack
