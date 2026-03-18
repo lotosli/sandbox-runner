@@ -43,6 +43,7 @@ These names are the release contract. CI should reuse them exactly.
 Workflow file:
 
 - [`.github/workflows/build.yml`](../.github/workflows/build.yml)
+- [`.github/workflows/release.yml`](../.github/workflows/release.yml)
 
 Behavior:
 
@@ -54,11 +55,42 @@ Behavior:
 
 This keeps CI binaries aligned with the same Makefile-driven process developers use locally.
 
+## GitHub Releases
+
+Release workflow:
+
+- [`.github/workflows/release.yml`](../.github/workflows/release.yml)
+
+Behavior:
+
+- runs when a `v*` tag is pushed
+- reruns `go test ./...`
+- reruns `make dist`
+- uploads the resulting binaries both as workflow artifacts and as GitHub Release assets
+- creates the release if missing, or updates assets if the release already exists
+
+This intentionally rebuilds from the tag commit instead of trying to reuse a previous workflow artifact from the web UI.
+
+## Release Branches and Tags
+
+Recommended model:
+
+- `main` for ongoing development
+- `release/0.1` for `0.1.x` maintenance
+- `v0.1.0`, `v0.1.1`, `v0.1.2` style tags for actual published releases
+
+Important rule:
+
+- a tag created from `release/0.1` does not merge anything into `main`
+
+Tags only point at commits. If a bugfix is released from `release/0.1`, you still need to sync that fix back to `main`, usually by `cherry-pick` or a targeted PR.
+
 ## If You Change Build Outputs
 
 Update these in the same pass:
 
 - [`Makefile`](../Makefile)
 - [`.github/workflows/build.yml`](../.github/workflows/build.yml)
+- [`.github/workflows/release.yml`](../.github/workflows/release.yml)
 - [`README.md`](../README.md)
 - [`docs/build-and-release.md`](./build-and-release.md)
