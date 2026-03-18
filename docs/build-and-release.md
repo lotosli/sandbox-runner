@@ -64,12 +64,18 @@ Release workflow:
 Behavior:
 
 - runs when a `v*` tag is pushed
+- can also be started manually with an existing tag input such as `v0.1.0`
 - reruns `go test ./...`
 - reruns `make dist`
 - uploads the resulting binaries both as workflow artifacts and as GitHub Release assets
 - creates the release if missing, or updates assets if the release already exists
 
 This intentionally rebuilds from the tag commit instead of trying to reuse a previous workflow artifact from the web UI.
+
+Important note:
+
+- tags created before this workflow existed do not trigger a retroactive release run
+- for those older tags, use `Actions -> Release -> Run workflow` and provide the existing tag name
 
 ## Release Branches and Tags
 
