@@ -52,6 +52,22 @@ For agent or automation use, prefer `--json-summary`. It prints a stable JSON su
 - [`configs/run.opensandbox.sample.yaml`](../configs/run.opensandbox.sample.yaml): OpenSandbox default runtime
 - [`configs/run.opensandbox.kata.sample.yaml`](../configs/run.opensandbox.kata.sample.yaml): OpenSandbox runtime-profile negotiation
 
+## Language Samples
+
+The repository also ships runnable per-language examples under [`examples/`](../examples/README.md). Each one includes its own `run.local.sample.yaml`, stable stdout/stderr markers, and an `artifacts/proof.json` output so an agent can validate the full lifecycle without reverse-engineering the workspace.
+
+- [`examples/go-basic/run.local.sample.yaml`](../examples/go-basic/run.local.sample.yaml)
+- [`examples/python-basic/run.local.sample.yaml`](../examples/python-basic/run.local.sample.yaml)
+- [`examples/node-basic/run.local.sample.yaml`](../examples/node-basic/run.local.sample.yaml)
+- [`examples/java-basic/run.local.sample.yaml`](../examples/java-basic/run.local.sample.yaml)
+- [`examples/shell-basic/run.local.sample.yaml`](../examples/shell-basic/run.local.sample.yaml)
+
+Example command:
+
+```bash
+./sandbox-runner run --json-summary --config examples/python-basic/run.local.sample.yaml --policy configs/policy.sample.yaml
+```
+
 ## Where To Go Next
 
 - Architecture and lifecycle: [Architecture](./architecture.md)

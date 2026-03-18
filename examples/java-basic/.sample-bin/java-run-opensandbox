@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+export JAVA_TOOL_OPTIONS="-javaagent:/opt/otel/opentelemetry-javaagent.jar"
+exec "$(CDPATH= cd -- "$(dirname "$0")" && pwd)/java-run" "$@"

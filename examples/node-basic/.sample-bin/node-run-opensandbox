@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+export NODE_OPTIONS="--require @opentelemetry/auto-instrumentations-node/register"
+exec node app.js "$@"

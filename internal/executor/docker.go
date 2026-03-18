@@ -351,12 +351,20 @@ func dockerLocalPlatform(cfg model.RunConfig) string {
 	return ""
 }
 
-func dockerClientHost(cfg model.RunConfig) (string, error) {
-	if cfg.Docker.Provider != model.DockerProviderOrbStack && (cfg.Docker.Context == "" || cfg.Docker.Context == "default") {
-		return "", nil
-	}
+var (
+	dockerContextShow    = currentDockerContext
+	dockerContextInspect = inspectDockerContext
+)
 
+func dockerClientHost(cfg model.RunConfig) (string, error) {
 	contextName := strings.TrimSpace(cfg.Docker.Context)
+	if cfg.Docker.Provider != model.DockerProviderOrbStack && (contextName == "" || contextName == "default") {
+		current := strings.TrimSpace(dockerContextShow())
+		if current == "" || current == "default" {
+			return "", nil
+		}
+		contextName = current
+	}
 	if contextName == "" {
 		contextName = strings.TrimSpace(cfg.OrbStack.DockerContext)
 	}
@@ -367,7 +375,7 @@ func dockerClientHost(cfg model.RunConfig) (string, error) {
 		return "", nil
 	}
 
-	endpoint, err := inspectDockerContext(contextName)
+	endpoint, err := dockerContextInspect(contextName)
 	if err == nil && endpoint != "" {
 		return endpoint, nil
 	}
@@ -383,6 +391,17 @@ func dockerClientHost(cfg model.RunConfig) (string, error) {
 		}
 	}
 	return "", err
+}
+
+func currentDockerContext() string {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "docker", "context", "show")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
 }
 
 func inspectDockerContext(name string) (string, error) {

@@ -8,6 +8,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -31,9 +34,16 @@ func (Runner) Run(ctx context.Context, spec CommandSpec, handler IOHandler) (Res
 		defer cancel()
 	}
 
-	cmd := exec.CommandContext(runCtx, spec.Command[0], spec.Command[1:]...)
+	env := mergedEnv(spec.Env)
+	commandPath, err := resolveCommandPath(spec.Command[0], env, spec.Dir)
+	if err != nil {
+		now := time.Now().UTC()
+		return Result{StartedAt: now, FinishedAt: now}, err
+	}
+
+	cmd := exec.CommandContext(runCtx, commandPath, spec.Command[1:]...)
 	cmd.Dir = spec.Dir
-	cmd.Env = mergeEnv(spec.Env)
+	cmd.Env = envList(env)
 
 	stdoutPipe, err := cmd.StdoutPipe()
 	if err != nil {
@@ -95,7 +105,7 @@ func (Runner) Run(ctx context.Context, spec CommandSpec, handler IOHandler) (Res
 	return result, waitErr
 }
 
-func mergeEnv(extra map[string]string) []string {
+func mergedEnv(extra map[string]string) map[string]string {
 	env := map[string]string{}
 	for _, item := range os.Environ() {
 		parts := splitEnv(item)
@@ -104,6 +114,10 @@ func mergeEnv(extra map[string]string) []string {
 	for k, v := range extra {
 		env[k] = v
 	}
+	return env
+}
+
+func envList(env map[string]string) []string {
 	out := make([]string, 0, len(env))
 	for k, v := range env {
 		out = append(out, fmt.Sprintf("%s=%s", k, v))
@@ -118,6 +132,87 @@ func splitEnv(item string) [2]string {
 		}
 	}
 	return [2]string{item, ""}
+}
+
+func resolveCommandPath(name string, env map[string]string, dir string) (string, error) {
+	if name == "" {
+		return "", exec.ErrNotFound
+	}
+	if strings.ContainsRune(name, os.PathSeparator) || filepath.IsAbs(name) {
+		return name, nil
+	}
+	pathValue := env["PATH"]
+	if pathValue == "" {
+		pathValue = os.Getenv("PATH")
+	}
+	if runtime.GOOS == "windows" {
+		return resolveCommandPathWindows(name, pathValue, dir, env["PATHEXT"])
+	}
+	for _, entry := range filepath.SplitList(pathValue) {
+		if entry == "" {
+			entry = "."
+		}
+		base := entry
+		if !filepath.IsAbs(base) && dir != "" {
+			base = filepath.Join(dir, base)
+		}
+		candidate := filepath.Join(base, name)
+		if isExecutableFile(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", exec.ErrNotFound
+}
+
+func ResolveCommandPath(name string, dir string, extraEnv map[string]string) (string, error) {
+	return resolveCommandPath(name, mergedEnv(extraEnv), dir)
+}
+
+func resolveCommandPathWindows(name, pathValue, dir, pathExt string) (string, error) {
+	extensions := []string{""}
+	if filepath.Ext(name) == "" {
+		if pathExt == "" {
+			pathExt = ".COM;.EXE;.BAT;.CMD"
+		}
+		for _, ext := range strings.Split(pathExt, ";") {
+			if ext == "" {
+				continue
+			}
+			extensions = append(extensions, ext)
+		}
+	}
+	for _, entry := range filepath.SplitList(pathValue) {
+		if entry == "" {
+			entry = "."
+		}
+		base := entry
+		if !filepath.IsAbs(base) && dir != "" {
+			base = filepath.Join(dir, base)
+		}
+		for _, ext := range extensions {
+			candidate := filepath.Join(base, name)
+			if ext != "" && !strings.HasSuffix(strings.ToLower(candidate), strings.ToLower(ext)) {
+				candidate += ext
+			}
+			if isExistingFile(candidate) {
+				return candidate, nil
+			}
+		}
+	}
+	return "", exec.ErrNotFound
+}
+
+func isExecutableFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	return info.Mode().Perm()&0o111 != 0
+}
+
+func isExistingFile(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.Mode().IsRegular()
 }
 
 func streamPipe(ctx context.Context, reader io.Reader, stream string, spec CommandSpec, handler IOHandler) int {

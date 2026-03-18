@@ -113,7 +113,8 @@ func (b *DevContainerBackend) Create(ctx context.Context, req CreateSandboxReque
 
 	upCtx, upCancel := context.WithTimeout(ctx, readTimeout)
 	defer upCancel()
-	if _, err := b.runCLI(upCtx, workspacePath, b.upArgs(workspacePath, sandboxID)...); err != nil {
+	upOutput, err := b.runCLI(upCtx, workspacePath, b.upArgs(workspacePath, sandboxID)...)
+	if err != nil {
 		return SandboxInfo{}, model.RunnerError{
 			Code:        string(model.ErrorCodeDevContainerUpFailed),
 			Message:     err.Error(),
@@ -121,6 +122,7 @@ func (b *DevContainerBackend) Create(ctx context.Context, req CreateSandboxReque
 			Cause:       err,
 		}
 	}
+	summary = mergeDevContainerUpSummary(summary, upOutput)
 
 	if b.cfg.DevContainer.RunUserCommands && !b.cfg.DevContainer.SkipPostCreate {
 		userCtx, userCancel := context.WithTimeout(ctx, readTimeout)
@@ -144,6 +146,9 @@ func (b *DevContainerBackend) Create(ctx context.Context, req CreateSandboxReque
 			"config_path":      summary.ConfigPath,
 			"runtime.profile":  string(model.RuntimeProfileNative),
 		},
+	}
+	if summary.ContainerID != "" {
+		info.Metadata["container_id"] = summary.ContainerID
 	}
 
 	b.mu.Lock()
@@ -190,7 +195,6 @@ func (b *DevContainerBackend) Exec(ctx context.Context, sandboxID string, req Ex
 
 	args := b.execArgs(sandbox, req)
 	cmd := exec.CommandContext(ctx, b.cliPath, args...)
-	cmd.Dir = sandbox.summary.LocalWorkspacePath
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return ExecHandle{}, model.RunnerError{
@@ -306,15 +310,22 @@ func (b *DevContainerBackend) Delete(ctx context.Context, sandboxID string) erro
 		return nil
 	}
 	_, err := b.runCLI(ctx, sandbox.summary.LocalWorkspacePath, b.downArgs(sandbox.summary.LocalWorkspacePath)...)
-	if err != nil {
-		return model.RunnerError{
-			Code:        string(model.ErrorCodeDevContainerDownFailed),
-			Message:     err.Error(),
-			BackendKind: string(model.BackendKindDevContainer),
-			Cause:       err,
+	if err == nil {
+		return nil
+	}
+	if sandbox.summary.ContainerID != "" && isUnsupportedDevContainerDown(err) {
+		if removeErr := b.removeContainer(ctx, sandbox.summary.ContainerID); removeErr == nil {
+			return nil
+		} else {
+			err = removeErr
 		}
 	}
-	return nil
+	return model.RunnerError{
+		Code:        string(model.ErrorCodeDevContainerDownFailed),
+		Message:     err.Error(),
+		BackendKind: string(model.BackendKindDevContainer),
+		Cause:       err,
+	}
 }
 
 func (b *DevContainerBackend) SyncWorkspaceIn(ctx context.Context, sandboxID, localDir string) error {
@@ -453,15 +464,13 @@ func (b *DevContainerBackend) readConfigurationArgs(workspacePath string) []stri
 }
 
 func (b *DevContainerBackend) upArgs(workspacePath, sandboxID string) []string {
+	_ = sandboxID
 	args := append([]string{"up"}, b.commonArgs(workspacePath)...)
 	if b.cfg.DevContainer.RemoveExistingContainer {
 		args = append(args, "--remove-existing-container")
 	}
 	if b.cfg.DevContainer.SkipPostCreate {
 		args = append(args, "--skip-post-create")
-	}
-	for _, label := range b.idLabels(sandboxID) {
-		args = append(args, "--id-label", label)
 	}
 	return args
 }
@@ -564,13 +573,8 @@ func summarizeDevContainerConfig(output []byte, cfg model.RunConfig, workspacePa
 		ConfigPath:         cfg.DevContainer.ConfigPath,
 		LocalWorkspacePath: workspacePath,
 	}
-	payload := strings.TrimSpace(string(output))
-	if payload == "" {
-		return summary
-	}
-
-	root := map[string]any{}
-	if err := json.Unmarshal([]byte(payload), &root); err != nil {
+	root, ok := parseDevContainerCLIJSON(output)
+	if !ok {
 		return summary
 	}
 	if value, ok := lookupValue(root, "workspaceFolder"); ok {
@@ -592,6 +596,40 @@ func summarizeDevContainerConfig(output []byte, cfg model.RunConfig, workspacePa
 		}
 	}
 	return summary
+}
+
+func mergeDevContainerUpSummary(summary model.DevContainerArtifact, output []byte) model.DevContainerArtifact {
+	root, ok := parseDevContainerCLIJSON(output)
+	if !ok {
+		return summary
+	}
+	if value, ok := lookupValue(root, "containerId"); ok {
+		summary.ContainerID = stringify(value)
+	}
+	return summary
+}
+
+func parseDevContainerCLIJSON(output []byte) (map[string]any, bool) {
+	payload := strings.TrimSpace(string(output))
+	if payload == "" {
+		return nil, false
+	}
+	lines := strings.Split(payload, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" || !strings.HasPrefix(line, "{") {
+			continue
+		}
+		root := map[string]any{}
+		if err := json.Unmarshal([]byte(line), &root); err == nil {
+			return root, true
+		}
+	}
+	root := map[string]any{}
+	if err := json.Unmarshal([]byte(payload), &root); err == nil {
+		return root, true
+	}
+	return nil, false
 }
 
 func (b *DevContainerBackend) translateCwd(sandbox devContainerSandbox, cwd string) string {
@@ -695,6 +733,40 @@ func devcontainerShellQuote(value string) string {
 		return "''"
 	}
 	return "'" + strings.ReplaceAll(value, "'", `'"'"'`) + "'"
+}
+
+func isUnsupportedDevContainerDown(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "Unknown arguments:") || strings.Contains(message, "Unknown command")
+}
+
+func (b *DevContainerBackend) removeContainer(ctx context.Context, containerID string) error {
+	dockerBinary := b.cfg.Docker.Binary
+	if dockerBinary == "" {
+		dockerBinary = "docker"
+	}
+	binary, err := exec.LookPath(dockerBinary)
+	if err != nil {
+		return fmt.Errorf("docker CLI not found for devcontainer cleanup: %w", err)
+	}
+	args := []string{}
+	if contextName := strings.TrimSpace(b.cfg.Docker.Context); contextName != "" && contextName != "default" {
+		args = append(args, "--context", contextName)
+	}
+	args = append(args, "rm", "-f", containerID)
+	cmd := exec.CommandContext(ctx, binary, args...)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		text := strings.TrimSpace(string(output))
+		if text == "" {
+			text = err.Error()
+		}
+		return errors.New(text)
+	}
+	return nil
 }
 
 var _ SandboxBackend = (*DevContainerBackend)(nil)

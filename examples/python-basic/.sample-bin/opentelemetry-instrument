@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+export SAMPLE_PYTHON_OTEL_WRAPPED=1
+exec "$@"

@@ -1,0 +1,81 @@
+run:
+  service_name: sandbox-runner-node-devcontainer-sample
+  mode: local
+  attempt: 1
+  workspace_dir: .
+  artifact_dir: .sandbox-runner
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - node
+    - app.js
+    - execute
+  language: auto
+  image: node:22-alpine
+
+phases:
+  prepare:
+    enabled: true
+    timeout_sec: 120
+  setup:
+    enabled: true
+    timeout_sec: 300
+    network_profile: setup-online
+  execute:
+    enabled: true
+    timeout_sec: 300
+    network_profile: execute-offline
+  verify:
+    enabled: true
+    timeout_sec: 120
+    smoke_command:
+      - node
+      - app.js
+      - verify
+    expected_artifacts:
+      - artifacts/proof.json
+  collect:
+    enabled: true
+    timeout_sec: 120
+
+collector:
+  mode: skip
+
+execution:
+  backend: devcontainer
+  provider: native
+  runtime_profile: default
+
+backend:
+  kind: devcontainer
+
+runtime:
+  profile: native
+
+platform:
+  run_mode: local_devcontainer
+
+devcontainer:
+  cli_path: devcontainer
+  workspace_folder: .
+  config_path: .devcontainer/devcontainer.json
+  mount_workspace_git_root: false
+  remove_existing_container: false
+  skip_post_create: true
+  run_user_commands: false
+  up_timeout_sec: 300
+  exec_timeout_sec: 300
+  id_label_prefix: ai-sandbox-runner
+  log_level: info
+  cleanup_mode: delete
+
+sandbox:
+  env: {}
+
+provider:
+  prefer_opensandbox: false
+  require_capabilities:
+    - devcontainer
+    - stream_logs
+  fallback_order:
+    - devcontainer

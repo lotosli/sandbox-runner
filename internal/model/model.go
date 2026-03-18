@@ -833,6 +833,7 @@ type RuntimeArtifact struct {
 type DevContainerArtifact struct {
 	CLIPath            string   `json:"cli_path,omitempty"`
 	ConfigPath         string   `json:"config_path,omitempty"`
+	ContainerID        string   `json:"container_id,omitempty"`
 	WorkspaceFolder    string   `json:"workspace_folder,omitempty"`
 	HasPostCreate      bool     `json:"has_post_create,omitempty"`
 	HasPostStart       bool     `json:"has_post_start,omitempty"`

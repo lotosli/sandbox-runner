@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+root_dir="$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)"
+cd "$root_dir"
+
+export OTEL_SERVICE_NAME="sandbox-runner-shell-apple-container-sample"
+export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318"
+export OTEL_TRACES_EXPORTER="otlp"
+export OTEL_METRICS_EXPORTER="otlp"
+export OTEL_LOGS_EXPORTER="otlp"
+export OTEL_RESOURCE_ATTRIBUTES="deployment.environment.name=local,run_id=${RUN_ID:-},attempt=${ATTEMPT:-1},sandbox_id=${SANDBOX_ID:-}"
+
+exec "$root_dir/run.sh"

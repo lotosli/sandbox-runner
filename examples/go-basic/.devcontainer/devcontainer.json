@@ -1,0 +1,6 @@
+{
+  "name": "sandbox-runner-go-basic",
+  "image": "golang:1.25.7-alpine",
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind"
+}

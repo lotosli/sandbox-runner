@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -348,9 +349,17 @@ func (c *Client) MakeDirs(ctx context.Context, sandboxID string, dirs map[string
 	}
 	payload := map[string]map[string]int{}
 	for dir, mode := range dirs {
-		payload[dir] = map[string]int{"mode": mode}
+		payload[dir] = map[string]int{"mode": octalDigits(mode)}
 	}
 	return c.doJSONAbsolute(ctx, http.MethodPost, endpoint.Endpoint+"/directories", payload, nil, endpoint.Headers)
+}
+
+func octalDigits(mode int) int {
+	value, err := strconv.Atoi(fmt.Sprintf("%o", mode))
+	if err != nil {
+		return mode
+	}
+	return value
 }
 
 func (c *Client) RemoveDirs(ctx context.Context, sandboxID string, dirs []string) error {

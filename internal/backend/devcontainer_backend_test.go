@@ -233,6 +233,81 @@ esac
 	}
 }
 
+func TestDevContainerBackendDeleteFallsBackToDockerRemoveWhenDownUnsupported(t *testing.T) {
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "devcontainer.log")
+	dockerLogPath := filepath.Join(dir, "docker.log")
+	devcontainerPath := filepath.Join(dir, "devcontainer")
+	dockerPath := filepath.Join(dir, "docker")
+	devcontainerScript := `#!/bin/sh
+set -eu
+printf '%s %s\n' "$1" "$*" >> "${DEVCONTAINER_TEST_LOG}"
+case "$1" in
+  read-configuration)
+    printf '{"workspaceFolder":"/workspaces/test"}\n'
+    ;;
+  up)
+    printf '{"containerId":"ctr-devcontainer-1"}\n'
+    ;;
+  down)
+    echo 'Unknown arguments: workspace-folder, config, log-level, mount-workspace-git-root, down' >&2
+    exit 1
+    ;;
+  *)
+    printf '{}\n'
+    ;;
+esac
+`
+	dockerScript := `#!/bin/sh
+set -eu
+printf '%s %s\n' "$1" "$*" >> "${DOCKER_TEST_LOG}"
+`
+	if err := os.WriteFile(devcontainerPath, []byte(devcontainerScript), 0o755); err != nil {
+		t.Fatalf("WriteFile(devcontainer) error = %v", err)
+	}
+	if err := os.WriteFile(dockerPath, []byte(dockerScript), 0o755); err != nil {
+		t.Fatalf("WriteFile(docker) error = %v", err)
+	}
+	t.Setenv("DEVCONTAINER_TEST_LOG", logPath)
+	t.Setenv("DOCKER_TEST_LOG", dockerLogPath)
+
+	cfg := config.DefaultRunConfig()
+	cfg.Platform.RunMode = model.RunModeLocalDevContainer
+	cfg.Backend.Kind = model.BackendKindDevContainer
+	cfg.DevContainer.CLIPath = devcontainerPath
+	cfg.DevContainer.WorkspaceFolder = dir
+	cfg.Run.WorkspaceDir = dir
+	cfg.Run.RunID = "run-fallback"
+	cfg.Run.Attempt = 1
+	cfg.Run.SandboxID = ""
+	cfg.Docker.Binary = dockerPath
+
+	backend, err := NewDevContainerBackend(cfg)
+	if err != nil {
+		t.Fatalf("NewDevContainerBackend() error = %v", err)
+	}
+	info, err := backend.Create(context.Background(), CreateSandboxRequest{
+		RunID:        cfg.Run.RunID,
+		Attempt:      cfg.Run.Attempt,
+		WorkspaceDir: dir,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	if err := backend.Delete(context.Background(), info.ID); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	dockerLog, err := os.ReadFile(dockerLogPath)
+	if err != nil {
+		t.Fatalf("ReadFile(docker log) error = %v", err)
+	}
+	if !strings.Contains(string(dockerLog), "rm -f ctr-devcontainer-1") {
+		t.Fatalf("docker cleanup log = %q, want rm -f ctr-devcontainer-1", string(dockerLog))
+	}
+}
+
 func TestDevContainerBackendExecTranslatesCwdToResolvedWorkspaceFolder(t *testing.T) {
 	dir := t.TempDir()
 	workspace := filepath.Join(dir, "workspace")
@@ -327,5 +402,32 @@ esac
 	}
 	if stdout[len(stdout)-1] != subdir {
 		t.Fatalf("pwd = %q, want %q", stdout[len(stdout)-1], subdir)
+	}
+}
+
+func TestSummarizeDevContainerConfigParsesJSONAfterBanner(t *testing.T) {
+	cfg := config.DefaultRunConfig()
+	cfg.DevContainer.CLIPath = "devcontainer"
+	cfg.DevContainer.ConfigPath = "/workspace/.devcontainer/devcontainer.json"
+
+	output := []byte("[2026-03-18T17:57:17.171Z] @devcontainers/cli 0.84.1\n" +
+		`{"configuration":{"postCreateCommand":"go mod download","features":{"ghcr.io/devcontainers/features/go:1":{}}},"workspace":{"workspaceFolder":"/workspace"}}`)
+
+	summary := summarizeDevContainerConfig(output, cfg, "/tmp/workspace")
+	if summary.WorkspaceFolder != "/workspace" {
+		t.Fatalf("workspace folder = %q, want /workspace", summary.WorkspaceFolder)
+	}
+	if !summary.HasPostCreate {
+		t.Fatal("expected postCreateCommand to be detected from trailing JSON line")
+	}
+	if len(summary.Features) != 1 || summary.Features[0] != "ghcr.io/devcontainers/features/go:1" {
+		t.Fatalf("features = %v, want devcontainer feature key", summary.Features)
+	}
+}
+
+func TestMergeDevContainerUpSummaryParsesJSONAfterBanner(t *testing.T) {
+	summary := mergeDevContainerUpSummary(model.DevContainerArtifact{}, []byte("[2026-03-18T17:56:46.743Z] @devcontainers/cli 0.84.1\n"+`{"outcome":"success","containerId":"ctr-123"}`))
+	if summary.ContainerID != "ctr-123" {
+		t.Fatalf("container id = %q, want ctr-123", summary.ContainerID)
 	}
 }

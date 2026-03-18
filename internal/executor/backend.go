@@ -190,6 +190,10 @@ func (e BackendExecutor) resultTarget(sandboxID string) model.ExecutionTarget {
 	if image == "" {
 		image = e.runCfg.Run.Image
 	}
+	containerID := sandboxID
+	if e.runCfg.Backend.Kind == model.BackendKindDevContainer && e.runCfg.Metadata["devcontainer.container_id"] != "" {
+		containerID = e.runCfg.Metadata["devcontainer.container_id"]
+	}
 	target := model.ExecutionTarget{
 		OS:                 "linux",
 		Arch:               e.target.Arch,
@@ -199,7 +203,7 @@ func (e BackendExecutor) resultTarget(sandboxID string) model.ExecutionTarget {
 		BackendProvider:    backendProviderName(e.runCfg),
 		RuntimeProfile:     string(e.runCfg.Execution.RuntimeProfile),
 		RuntimeClassName:   e.runCfg.Kata.RuntimeClassName,
-		ContainerID:        sandboxID,
+		ContainerID:        containerID,
 		ContainerImage:     image,
 		Execution:          e.runCfg.Execution,
 		CompatibilityLevel: model.SupportLevel(e.runCfg.Metadata["execution.compatibility_level"]),

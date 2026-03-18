@@ -6,6 +6,9 @@ Read this file first. Then read the relevant first-level directory `AGENTS.md` s
 
 This repository intentionally keeps `AGENTS.md` only at the root and first-level subdirectories. There are no deeper nested `AGENTS.md` files.
 
+## failfast 
+## NO NO NO failback
+
 ## Repository Purpose
 
 This repository implements `sandbox-runner`, a Go runner that turns a one-shot command into a structured run with stable phases, policy checks, telemetry, artifacts, replay data, and optional sandbox backends.
@@ -125,6 +128,7 @@ Do not spread config inference into unrelated packages.
 ### 7. Platform feature gates are explicit
 
 `internal/platform` decides what features are available on the current host or mode. Avoid sprinkling ad hoc OS checks through unrelated packages when a feature gate should express the intent.
+
 
 ## Main Lifecycle Details
 

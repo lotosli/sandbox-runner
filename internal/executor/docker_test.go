@@ -178,6 +178,35 @@ func TestDockerExecutorRunUsesSDKClient(t *testing.T) {
 	}
 }
 
+func TestDockerClientHostUsesCurrentDockerContextWhenConfigUsesDefault(t *testing.T) {
+	cfg := config.DefaultRunConfig()
+	cfg.Platform.RunMode = model.RunModeLocalDocker
+	cfg.Docker.Context = "default"
+
+	origShow := dockerContextShow
+	origInspect := dockerContextInspect
+	defer func() {
+		dockerContextShow = origShow
+		dockerContextInspect = origInspect
+	}()
+
+	dockerContextShow = func() string { return "orbstack" }
+	dockerContextInspect = func(name string) (string, error) {
+		if name != "orbstack" {
+			t.Fatalf("inspect name = %q, want orbstack", name)
+		}
+		return "unix:///tmp/orbstack.sock", nil
+	}
+
+	host, err := dockerClientHost(cfg)
+	if err != nil {
+		t.Fatalf("dockerClientHost() error = %v", err)
+	}
+	if host != "unix:///tmp/orbstack.sock" {
+		t.Fatalf("host = %q, want unix:///tmp/orbstack.sock", host)
+	}
+}
+
 type dockerFrame struct {
 	stream  byte
 	payload string

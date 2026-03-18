@@ -58,7 +58,7 @@ func defaultSteps(projectType, workspaceDir string) []model.SetupStep {
 	case "python":
 		return []model.SetupStep{
 			{ID: "venv-create", Cmd: []string{"python", "-m", "venv", ".venv"}},
-			{ID: "pip-install", Cmd: []string{filepath.Join(workspaceDir, ".venv", "bin", "pip"), "install", "-r", "requirements.txt"}},
+			{ID: "pip-install", Cmd: []string{filepath.Join(".venv", "bin", "pip"), "install", "-r", "requirements.txt"}},
 		}
 	case "node":
 		if _, err := os.Stat(filepath.Join(workspaceDir, "pnpm-lock.yaml")); err == nil {

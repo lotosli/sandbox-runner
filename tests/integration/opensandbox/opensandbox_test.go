@@ -79,7 +79,7 @@ func TestOpenSandboxServerIntegration(t *testing.T) {
 	cfg.OpenSandbox.CleanupMode = model.OpenSandboxCleanupDelete
 	cfg.OpenSandbox.WorkspaceRoot = "/workspace"
 	cfg.Run.WorkspaceDir = workspaceDir
-	cfg.Sandbox.Image = "alpine:3.20"
+	cfg.Sandbox.Image = "debian:bookworm-slim"
 
 	backend := backendpkg.NewOpenSandboxBackend(cfg)
 	info, err := backend.Create(context.Background(), backendpkg.CreateSandboxRequest{
@@ -91,9 +91,6 @@ func TestOpenSandboxServerIntegration(t *testing.T) {
 		TimeoutSec:   180,
 	})
 	if err != nil {
-		if strings.Contains(err.Error(), "422") {
-			t.Skipf("opensandbox-server create schema appears incompatible with current integration fixture: %v", err)
-		}
 		t.Fatalf("Create() error = %v\nstdout:\n%s\nstderr:\n%s", err, stdout.String(), stderr.String())
 	}
 	if err := backend.Start(context.Background(), info.ID); err != nil {
@@ -105,6 +102,9 @@ func TestOpenSandboxServerIntegration(t *testing.T) {
 
 	exitCode, stderrText, err := backend.RunSimpleCommand(context.Background(), info.ID, "pwd", cfg.OpenSandbox.WorkspaceRoot, nil, 30*time.Second)
 	if err != nil {
+		if isOpenSandboxProxyLimitation(err) {
+			t.Skipf("opensandbox local docker fixture cannot proxy exec traffic from this host: %v", err)
+		}
 		t.Fatalf("RunSimpleCommand(pwd) error = %v", err)
 	}
 	if exitCode != 0 {
@@ -113,6 +113,9 @@ func TestOpenSandboxServerIntegration(t *testing.T) {
 
 	exitCode, stderrText, err = backend.RunSimpleCommand(context.Background(), info.ID, "mkdir -p /workspace/.sandbox-runner && echo hello > /workspace/.sandbox-runner/hello.txt", cfg.OpenSandbox.WorkspaceRoot, nil, 30*time.Second)
 	if err != nil {
+		if isOpenSandboxProxyLimitation(err) {
+			t.Skipf("opensandbox local docker fixture cannot proxy exec traffic from this host: %v", err)
+		}
 		t.Fatalf("RunSimpleCommand(write artifact) error = %v", err)
 	}
 	if exitCode != 0 {
@@ -174,4 +177,14 @@ func waitForServerReady(baseURL string, timeout time.Duration) error {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return fmt.Errorf("timeout waiting for %s", baseURL)
+}
+
+func isOpenSandboxProxyLimitation(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "Could not connect to the backend sandbox endpoint") ||
+		strings.Contains(message, "NETWORK_MODE_ENDPOINT_UNAVAILABLE") ||
+		strings.Contains(message, "has no assigned IP address")
 }

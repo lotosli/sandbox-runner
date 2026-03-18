@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -353,6 +354,10 @@ func (e Engine) runPrepare(ctx context.Context, state *runState) error {
 			devInfo, err := provider.DevContainerMetadata(phaseCtx, info.ID)
 			if err == nil {
 				state.devcontainerInfo = &devInfo
+				if devInfo.ContainerID != "" {
+					state.target.ContainerID = devInfo.ContainerID
+					req.RunConfig.Metadata["devcontainer.container_id"] = devInfo.ContainerID
+				}
 				_ = state.writer.WriteDevContainer(devInfo)
 				if cfg.Backend.Kind == model.BackendKindDevContainer && devInfo.WorkspaceFolder != "" {
 					_ = state.emitter.EmitEvent(phaseCtx, model.RunEvent{
@@ -460,10 +465,11 @@ func (e Engine) runSetup(ctx context.Context, state *runState) error {
 		if err := state.policy.CheckCommand(phaseCtx, model.PhaseSetup, step.Cmd); err != nil {
 			return e.failPhase(phaseCtx, state, model.PhaseSetup, started, model.ErrorCodePolicyToolDeny, err)
 		}
-		stepEnv, err := state.policy.ResolveSecrets(phaseCtx, model.PhaseSetup)
+		secrets, err := state.policy.ResolveSecrets(phaseCtx, model.PhaseSetup)
 		if err != nil {
 			return e.failPhase(phaseCtx, state, model.PhaseSetup, started, model.ErrorCodePolicySecretDeny, err)
 		}
+		stepEnv := buildPhaseEnv(state.req.RunConfig, false, secrets)
 		result, execErr := execImpl.Run(phaseCtx, executor.Spec{
 			Phase:           model.PhaseSetup,
 			Command:         step.Cmd,
@@ -504,20 +510,11 @@ func (e Engine) runExecute(ctx context.Context, state *runState) error {
 		return e.failPhase(phaseCtx, state, model.PhaseExecute, started, model.ErrorCodePolicyNetDeny, err)
 	}
 
-	env := map[string]string{}
-	for k, v := range cfg.Run.ExtraEnv {
-		env[k] = v
-	}
-	for k, v := range cfg.Go.ExtraEnv {
-		env[k] = v
-	}
 	secrets, err := state.policy.ResolveSecrets(phaseCtx, model.PhaseExecute)
 	if err != nil {
 		return e.failPhase(phaseCtx, state, model.PhaseExecute, started, model.ErrorCodePolicySecretDeny, err)
 	}
-	for k, v := range secrets {
-		env[k] = v
-	}
+	env := buildPhaseEnv(cfg, true, secrets)
 
 	adapterImpl, err := e.registry.Resolve(cfg.Run.Language, cfg.Run.Command, env)
 	if err != nil {
@@ -597,10 +594,11 @@ func (e Engine) runVerify(ctx context.Context, state *runState) error {
 			}
 			state.executor = execImpl
 		}
-		verifyEnv, err := state.policy.ResolveSecrets(phaseCtx, model.PhaseVerify)
+		secrets, err := state.policy.ResolveSecrets(phaseCtx, model.PhaseVerify)
 		if err != nil {
 			return e.failPhase(phaseCtx, state, model.PhaseVerify, started, model.ErrorCodePolicySecretDeny, err)
 		}
+		verifyEnv := buildPhaseEnv(cfg, false, secrets)
 		result, execErr := state.executor.Run(phaseCtx, executor.Spec{
 			Phase:           model.PhaseVerify,
 			Command:         cfg.Phases.Verify.SmokeCommand,
@@ -686,6 +684,10 @@ func (e Engine) runCollect(ctx context.Context, state *runState) error {
 			devInfo, err := provider.DevContainerMetadata(phaseCtx, state.sandboxInfo.ID)
 			if err == nil {
 				state.devcontainerInfo = &devInfo
+				if devInfo.ContainerID != "" {
+					state.target.ContainerID = devInfo.ContainerID
+					state.req.RunConfig.Metadata["devcontainer.container_id"] = devInfo.ContainerID
+				}
 				_ = state.writer.WriteDevContainer(devInfo)
 			} else {
 				state.result.Metadata["devcontainer_metadata_error"] = err.Error()
@@ -969,6 +971,13 @@ func (e Engine) buildCreateSandboxRequest(cfg model.RunConfig) backend.CreateSan
 			env[key] = value
 		}
 	}
+	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
+		for key, value := range e.openSandboxBootstrapEnv(cfg) {
+			if _, exists := env[key]; !exists {
+				env[key] = value
+			}
+		}
+	}
 	workspaceDir := cfg.Run.WorkspaceDir
 	if cfg.Backend.Kind == model.BackendKindOpenSandbox {
 		workspaceDir = cfg.OpenSandbox.WorkspaceRoot
@@ -1003,6 +1012,28 @@ func (e Engine) buildCreateSandboxRequest(cfg model.RunConfig) backend.CreateSan
 		TimeoutSec:   maxInt(cfg.OpenSandbox.TTLSec, 1800),
 		WorkspaceDir: workspaceDir,
 	}
+}
+
+func (e Engine) openSandboxBootstrapEnv(cfg model.RunConfig) map[string]string {
+	if cfg.Backend.Kind != model.BackendKindOpenSandbox {
+		return nil
+	}
+	env := buildPhaseEnv(cfg, true, nil)
+	adapterImpl, err := e.registry.Resolve(cfg.Run.Language, cfg.Run.Command, env)
+	if err != nil {
+		return nil
+	}
+	_, adaptedEnv, err := adapterImpl.Rewrite(cfg.Run.Command, env, cfg)
+	if err != nil {
+		return nil
+	}
+	bootstrap := map[string]string{}
+	for key, value := range adaptedEnv {
+		if strings.HasPrefix(key, "OTEL_") {
+			bootstrap[key] = value
+		}
+	}
+	return bootstrap
 }
 
 func (e Engine) ensureRuntimeProfileSupport(cfg model.RunConfig, caps model.BackendCapabilities) error {
@@ -1656,4 +1687,53 @@ func artifactIndexReadOrder(files map[string]string) []string {
 		}
 	}
 	return out
+}
+
+func buildPhaseEnv(cfg model.RunConfig, includeGoEnv bool, secrets map[string]string) map[string]string {
+	out := map[string]string{}
+	base := currentProcessEnv()
+	mergeExpandedEnv(out, cfg.Run.ExtraEnv, base)
+	if includeGoEnv {
+		mergeExpandedEnv(out, cfg.Go.ExtraEnv, base)
+	}
+	for k, v := range secrets {
+		out[k] = v
+	}
+	return out
+}
+
+func mergeExpandedEnv(dst map[string]string, source map[string]string, base map[string]string) {
+	keys := make([]string, 0, len(source))
+	for key := range source {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		dst[key] = expandEnvValue(source[key], dst, base)
+	}
+}
+
+func expandEnvValue(value string, overrides map[string]string, base map[string]string) string {
+	return os.Expand(value, func(key string) string {
+		if v, ok := overrides[key]; ok {
+			return v
+		}
+		if v, ok := base[key]; ok {
+			return v
+		}
+		return ""
+	})
+}
+
+func currentProcessEnv() map[string]string {
+	env := map[string]string{}
+	for _, item := range os.Environ() {
+		parts := strings.SplitN(item, "=", 2)
+		if len(parts) == 2 {
+			env[parts[0]] = parts[1]
+			continue
+		}
+		env[parts[0]] = ""
+	}
+	return env
 }

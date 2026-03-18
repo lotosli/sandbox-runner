@@ -1,0 +1,6 @@
+{
+  "name": "sandbox-runner-python-basic",
+  "image": "python:3.12-alpine",
+  "workspaceFolder": "/workspace",
+  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind"
+}

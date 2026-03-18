@@ -3,10 +3,9 @@ package capability
 import (
 	"context"
 	"os"
-	"os/exec"
-	"path/filepath"
 
 	"github.com/lotosli/sandbox-runner/internal/model"
+	"github.com/lotosli/sandbox-runner/internal/proc"
 )
 
 func probeDirect(ctx context.Context, cfg model.ExecutionConfig, fullConfig model.RunConfig) (model.CapabilityProbeResult, error) {
@@ -32,13 +31,9 @@ func probeDirect(ctx context.Context, cfg model.ExecutionConfig, fullConfig mode
 	if len(fullConfig.Run.Command) > 0 {
 		command = fullConfig.Run.Command[0]
 	}
-	if command != "" && command[0] != '/' && command[0] != '.' {
-		if _, err := exec.LookPath(command); err != nil {
+	if command != "" {
+		if _, err := proc.ResolveCommandPath(command, fullConfig.Run.WorkspaceDir, probeEnv(fullConfig)); err != nil {
 			return model.CapabilityProbeResult{}, probeFailure(model.ErrorCodeCapabilityProbeFailed, cfg, "command %q is not executable on this host: %v", command, err)
-		}
-	} else if command != "" {
-		if _, err := os.Stat(filepath.Clean(command)); err != nil {
-			return model.CapabilityProbeResult{}, probeFailure(model.ErrorCodeCapabilityProbeFailed, cfg, "command path %q is not accessible: %v", command, err)
 		}
 	}
 
@@ -47,4 +42,15 @@ func probeDirect(ctx context.Context, cfg model.ExecutionConfig, fullConfig mode
 		"artifact_dir":  fullConfig.Run.ArtifactDir,
 		"command":       command,
 	}), nil
+}
+
+func probeEnv(cfg model.RunConfig) map[string]string {
+	env := map[string]string{}
+	for k, v := range cfg.Run.ExtraEnv {
+		env[k] = v
+	}
+	for k, v := range cfg.Go.ExtraEnv {
+		env[k] = v
+	}
+	return env
 }
