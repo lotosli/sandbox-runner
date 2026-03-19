@@ -62,6 +62,10 @@ func (s *Submitter) SubmitJob(ctx context.Context, job *batchv1.Job) (*SubmitRes
 	}, nil
 }
 
+func (s *Submitter) ApplyConfigMap(ctx context.Context, configMap *corev1.ConfigMap) (*corev1.ConfigMap, error) {
+	return s.client.ApplyConfigMap(ctx, configMap)
+}
+
 func RenderJobYAML(job *batchv1.Job) (string, error) {
 	return kubernetes.RenderJobYAML(job)
 }

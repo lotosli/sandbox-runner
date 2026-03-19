@@ -4,6 +4,8 @@ A Go-based runner for AI agents, IDE plugins, and platform automation workflows.
 
 `sandbox-runner` keeps the full `prepare -> setup -> execute -> verify -> collect` lifecycle stable while letting the execution substrate vary across direct host execution, Docker, Dev Container CLI, Kubernetes, Apple `container`, OrbStack, and OpenSandbox.
 
+`microvm` is accepted as a compatibility alias for the canonical `firecracker` runtime profile.
+
 ## What It Gives You
 
 - stable run semantics for agent-driven patch, build, test, and verify loops

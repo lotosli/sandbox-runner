@@ -71,7 +71,10 @@ func applyRunEnvOverrides(cfg model.RunConfig) model.RunConfig {
 		cfg.Backend.Kind = model.BackendKind(v)
 	}
 	if v := os.Getenv("SANDBOX_RUNTIME_PROFILE"); v != "" {
-		cfg.Runtime.Profile = model.RuntimeProfile(v)
+		cfg.Runtime.Profile = model.NormalizeRuntimeProfile(model.RuntimeProfile(v))
+	}
+	if v := os.Getenv("SANDBOX_RUNTIME_CLASS_NAME"); v != "" {
+		cfg.Runtime.ClassName = v
 	}
 	if v := os.Getenv("DOCKER_PROVIDER"); v != "" {
 		cfg.Docker.Provider = model.DockerProvider(v)
@@ -126,6 +129,7 @@ func normalizeRunConfigWithBase(cfg model.RunConfig, baseDir string) model.RunCo
 	cfg.DevContainer.ConfigPath = cleanPathFromBase(cfg.DevContainer.ConfigPath, baseDir)
 	cfg.DevContainer.WorkspaceFolder = cleanPathFromBase(cfg.DevContainer.WorkspaceFolder, baseDir)
 	cfg.K8s.Kubeconfig = cleanPathFromBase(cfg.K8s.Kubeconfig, baseDir)
+	cfg.Runtime.Profile = model.NormalizeRuntimeProfile(cfg.Runtime.Profile)
 	cfg = normalizeExecutionConfig(cfg)
 	inferredKind := inferBackendKind(cfg.Platform.RunMode)
 	if cfg.Backend.Kind == "" || cfg.Backend.Kind == model.BackendKindDirect && inferredKind != model.BackendKindDirect {
@@ -158,6 +162,12 @@ func normalizeRunConfigWithBase(cfg model.RunConfig, baseDir string) model.RunCo
 	}
 	if cfg.Runtime.Profile == model.RuntimeProfileKata {
 		cfg.Kata.Enabled = true
+	}
+	if cfg.Runtime.ClassName == "" && model.RequiresRuntimeClass(cfg.Execution.RuntimeProfile) {
+		cfg.Runtime.ClassName = cfg.Kata.RuntimeClassName
+	}
+	if cfg.Runtime.ClassName != "" {
+		cfg.Kata.RuntimeClassName = cfg.Runtime.ClassName
 	}
 	if cfg.DevContainer.WorkspaceFolder == "" {
 		cfg.DevContainer.WorkspaceFolder = cfg.Run.WorkspaceDir

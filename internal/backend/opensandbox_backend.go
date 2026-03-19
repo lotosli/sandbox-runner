@@ -78,14 +78,14 @@ func (b *OpenSandboxBackend) RuntimeInfo(ctx context.Context) (model.RuntimeInfo
 	info := model.RuntimeInfo{
 		ProviderKind:     string(model.BackendKindOpenSandbox),
 		RuntimeProfile:   string(b.cfg.Runtime.Profile),
-		RuntimeClassName: b.cfg.Kata.RuntimeClassName,
+		RuntimeClassName: model.RuntimeClassNameForConfig(b.cfg),
 		ContainerRuntime: "opensandbox-" + string(b.cfg.OpenSandbox.Runtime),
 		HostOS:           runtime.GOOS,
 		HostArch:         runtime.GOARCH,
 		Available:        true,
 	}
-	if b.cfg.Runtime.Profile == model.RuntimeProfileKata {
-		info.Virtualization = "kata"
+	if virtualization := model.VirtualizationForRuntimeProfile(b.cfg.Runtime.Profile); virtualization != "none" {
+		info.Virtualization = virtualization
 		info.CheckedBy = "provider-capabilities"
 		info.Detail = "runtime profile request will be delegated to opensandbox provider"
 	} else {
@@ -129,11 +129,11 @@ func (b *OpenSandboxBackend) Create(ctx context.Context, req CreateSandboxReques
 	if b.cfg.Runtime.Profile != "" {
 		createReq.Metadata["runtime.profile"] = string(b.cfg.Runtime.Profile)
 	}
-	if b.cfg.Runtime.Profile == model.RuntimeProfileKata {
-		createReq.Metadata["runtime.class"] = b.cfg.Kata.RuntimeClassName
-		extensions["runtime.profile"] = string(model.RuntimeProfileKata)
-		if b.cfg.Kata.RuntimeClassName != "" {
-			extensions["runtime.class"] = b.cfg.Kata.RuntimeClassName
+	if profile := model.NormalizeRuntimeProfile(b.cfg.Runtime.Profile); profile != model.RuntimeProfileNative && profile != model.RuntimeProfileDefault && profile != "" {
+		extensions["runtime.profile"] = string(profile)
+		if runtimeClass := model.RuntimeClassNameForConfig(b.cfg); runtimeClass != "" {
+			createReq.Metadata["runtime.class"] = runtimeClass
+			extensions["runtime.class"] = runtimeClass
 		}
 	}
 	if req.CPU != "" {

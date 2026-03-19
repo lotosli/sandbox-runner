@@ -1,0 +1,43 @@
+run:
+  service_name: sandbox-runner-k3s-microvm-demo
+  mode: stg
+  run_id: ""
+  attempt: 1
+  sandbox_id: stg-k3s-microvm
+  workspace_dir: /tmp
+  artifact_dir: /tmp/.sandbox-runner
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - sh
+    - -lc
+    - echo __MICROVM_OK__ && uname -a
+  language: shell
+  image: sandbox-runner-microvm:local
+
+collector:
+  mode: skip
+
+execution:
+  backend: k8s
+  provider: k3s
+  runtime_profile: microvm
+
+backend:
+  kind: k8s
+
+runtime:
+  profile: microvm
+  class_name: sandbox-runner-microvm
+
+platform:
+  target_os: auto
+  target_arch: auto
+  run_mode: stg_linux
+  container_execution_mode: host-runner
+
+k8s:
+  provider: k3s
+  kubeconfig: ~/.kube/config
+  context: k3d-k3s
+  namespace: ai-sandbox-runner-runs

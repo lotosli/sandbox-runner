@@ -10,6 +10,8 @@ import (
 
 func ValidateRunConfig(cfg model.RunConfig) error {
 	cfg = normalizeExecutionConfig(cfg)
+	cfg.Execution.RuntimeProfile = model.NormalizeExecutionRuntimeProfile(cfg.Execution.RuntimeProfile)
+	cfg.Runtime.Profile = model.NormalizeRuntimeProfile(cfg.Runtime.Profile)
 	if cfg.Run.ServiceName == "" {
 		return invalidSchema("run.service_name is required")
 	}
@@ -201,10 +203,10 @@ func validateBackendRunMode(cfg model.RunConfig) error {
 }
 
 func validateExecutionRuntime(cfg model.RunConfig) error {
-	if cfg.Execution.RuntimeProfile == model.ExecutionRuntimeProfileKata && (cfg.Execution.Backend == model.ExecutionBackendK8s || cfg.Execution.Backend == model.ExecutionBackendOpenSandbox) && cfg.Kata.RuntimeClassName == "" {
+	if model.RequiresRuntimeClass(cfg.Execution.RuntimeProfile) && requiresRuntimeClassForBackend(cfg) && model.RuntimeClassNameForConfig(cfg) == "" {
 		return model.RunnerError{
 			Code:        string(model.ErrorCodeKataRuntimeClassNotFound),
-			Message:     "kata.runtime_class_name is required when execution.runtime_profile=kata",
+			Message:     fmt.Sprintf("runtime.class_name is required when execution.runtime_profile=%s", cfg.Execution.RuntimeProfile),
 			BackendKind: string(cfg.Execution.Backend),
 		}
 	}
@@ -223,6 +225,17 @@ func validateExecutionRuntime(cfg model.RunConfig) error {
 		}
 	}
 	return nil
+}
+
+func requiresRuntimeClassForBackend(cfg model.RunConfig) bool {
+	switch cfg.Execution.Backend {
+	case model.ExecutionBackendK8s:
+		return true
+	case model.ExecutionBackendOpenSandbox:
+		return cfg.OpenSandbox.Runtime == model.OpenSandboxRuntimeKubernetes
+	default:
+		return false
+	}
 }
 
 func invalidSchema(message string) error {

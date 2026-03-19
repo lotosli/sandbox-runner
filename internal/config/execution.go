@@ -6,6 +6,7 @@ func normalizeExecutionConfig(cfg model.RunConfig) model.RunConfig {
 	if cfg.Execution.Backend == "" {
 		cfg.Execution = deriveExecutionConfig(cfg)
 	} else {
+		cfg.Execution.RuntimeProfile = model.NormalizeExecutionRuntimeProfile(cfg.Execution.RuntimeProfile)
 		if cfg.Execution.Provider == "" {
 			cfg.Execution.Provider = defaultProviderForBackend(cfg.Execution.Backend)
 		}
@@ -19,7 +20,7 @@ func normalizeExecutionConfig(cfg model.RunConfig) model.RunConfig {
 func deriveExecutionConfig(cfg model.RunConfig) model.ExecutionConfig {
 	backend := executionBackendFromLegacy(cfg)
 	provider := executionProviderFromLegacy(cfg, backend)
-	runtimeProfile := executionRuntimeProfileFromLegacy(cfg)
+	runtimeProfile := model.NormalizeExecutionRuntimeProfile(executionRuntimeProfileFromLegacy(cfg))
 	if provider == "" {
 		provider = defaultProviderForBackend(backend)
 	}

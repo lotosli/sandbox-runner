@@ -398,6 +398,10 @@ func telemetryVirtualization(profile model.RuntimeProfile) string {
 	switch profile {
 	case model.RuntimeProfileKata:
 		return "kata"
+	case model.RuntimeProfileGVisor:
+		return "gvisor"
+	case model.RuntimeProfileFirecracker:
+		return "firecracker"
 	case model.RuntimeProfileAppleContainer:
 		return "apple-container"
 	case model.RuntimeProfileOrbStackMachine:

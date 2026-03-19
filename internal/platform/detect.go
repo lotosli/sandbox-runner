@@ -109,7 +109,7 @@ func ResolveFeatures(cfg model.RunConfig, target model.ExecutionTarget) (model.F
 	} else if cfg.Backend.Kind == model.BackendKindK8s {
 		target.LocalPlatform = model.K8sLocalPlatform(cfg.K8s.Provider)
 	}
-	target.RuntimeClassName = cfg.Kata.RuntimeClassName
+	target.RuntimeClassName = model.RuntimeClassNameForConfig(cfg)
 	target.Virtualization = virtualizationForProfile(cfg.Runtime.Profile)
 	return features, warnings, nil
 }
@@ -310,6 +310,10 @@ func virtualizationForProfile(profile model.RuntimeProfile) string {
 	switch profile {
 	case model.RuntimeProfileKata:
 		return "kata"
+	case model.RuntimeProfileGVisor:
+		return "gvisor"
+	case model.RuntimeProfileFirecracker:
+		return "firecracker"
 	case model.RuntimeProfileAppleContainer:
 		return "apple-container"
 	case model.RuntimeProfileOrbStackMachine:

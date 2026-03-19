@@ -51,6 +51,10 @@ The runner does not allow arbitrary `backend/provider/runtime_profile` combinati
 - `gvisor`
 - `firecracker`
 
+Compatibility aliases:
+
+- `microvm` input normalizes to the canonical `firecracker` runtime profile
+
 ## Typical Combinations
 
 | Run mode | backend | provider | runtime_profile | Notes |
@@ -72,6 +76,8 @@ The runner does not allow arbitrary `backend/provider/runtime_profile` combinati
 - capability probe output is written into `context.json`, run metadata, and telemetry
 
 For OpenSandbox, non-default runtime profiles are validated by a live provider probe instead of a static assumption.
+
+For K8s-style execution, conditional runtime profiles also require `runtime.class_name` so the rendered Job can set `runtimeClassName`.
 
 ## Legacy Config Compatibility
 

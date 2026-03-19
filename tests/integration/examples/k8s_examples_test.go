@@ -74,6 +74,49 @@ func TestK8sProviderLanguageSamplesRenderJobs(t *testing.T) {
 	}
 }
 
+func TestK8sProviderLanguageSamplesRenderMicroVMJobs(t *testing.T) {
+	root := repoRoot(t)
+	binary := buildBinary(t, root)
+	policyPath := filepath.Join(root, "configs", "policy.sample.yaml")
+
+	providers := []k8sExampleProvider{
+		{name: "minikube", execution: model.ProviderMinikube, legacy: model.K8sProviderMinikube, context: "minikube"},
+		{name: "k3s", execution: model.ProviderK3s, legacy: model.K8sProviderK3s},
+		{name: "microk8s", execution: model.ProviderMicroK8s, legacy: model.K8sProviderMicroK8s},
+	}
+
+	for _, sample := range backendLanguageSamples(root) {
+		for _, provider := range providers {
+			t.Run(sample.name+"/"+provider.name, func(t *testing.T) {
+				workDir := t.TempDir()
+				copiedDir := filepath.Join(workDir, filepath.Base(sample.dir))
+				copyTree(t, sample.dir, copiedDir)
+
+				cfgPath, _ := writeK8sMicroVMExampleConfig(t, copiedDir, provider)
+				runCommand(t, root, binary, "validate", "--config", cfgPath, "--policy", policyPath)
+				rendered := runCommand(t, root, binary, "k8s", "render-job", "--config", cfgPath, "--policy", policyPath)
+
+				var job batchv1.Job
+				if err := k8syaml.Unmarshal([]byte(rendered), &job); err != nil {
+					t.Fatalf("Unmarshal(rendered job) error = %v\n%s", err, rendered)
+				}
+				if job.Labels["runtime_profile"] != "firecracker" {
+					t.Fatalf("runtime_profile label = %q, want firecracker", job.Labels["runtime_profile"])
+				}
+				if job.Spec.Template.Spec.RuntimeClassName == nil {
+					t.Fatal("runtimeClassName = nil, want sandbox-runner-microvm")
+				}
+				if *job.Spec.Template.Spec.RuntimeClassName != "sandbox-runner-microvm" {
+					t.Fatalf("runtimeClassName = %q, want sandbox-runner-microvm", *job.Spec.Template.Spec.RuntimeClassName)
+				}
+				if envValue(job.Spec.Template.Spec.Containers[0].Env, "RUNTIME_PROFILE") != "firecracker" {
+					t.Fatalf("RUNTIME_PROFILE env = %q, want firecracker", envValue(job.Spec.Template.Spec.Containers[0].Env, "RUNTIME_PROFILE"))
+				}
+			})
+		}
+	}
+}
+
 func writeK8sExampleConfig(t *testing.T, dir string, provider k8sExampleProvider) (string, model.RunConfig) {
 	t.Helper()
 	cfgPath := filepath.Join(dir, "run.docker.sample.yaml")
@@ -102,6 +145,41 @@ func writeK8sExampleConfig(t *testing.T, dir string, provider k8sExampleProvider
 		t.Fatalf("yaml.Marshal() error = %v", err)
 	}
 	outputPath := filepath.Join(dir, "run.k8s."+provider.name+".yaml")
+	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", outputPath, err)
+	}
+	return outputPath, cfg
+}
+
+func writeK8sMicroVMExampleConfig(t *testing.T, dir string, provider k8sExampleProvider) (string, model.RunConfig) {
+	t.Helper()
+	cfgPath := filepath.Join(dir, "run.docker.sample.yaml")
+	cfg, err := config.LoadRunConfig(cfgPath)
+	if err != nil {
+		t.Fatalf("LoadRunConfig(%s) error = %v", cfgPath, err)
+	}
+	cfg.Execution = model.ExecutionConfig{
+		Backend:        model.ExecutionBackendK8s,
+		Provider:       provider.execution,
+		RuntimeProfile: model.ExecutionRuntimeProfile("microvm"),
+	}
+	cfg.Backend.Kind = model.BackendKindK8s
+	cfg.Platform.RunMode = model.RunModeSTGLinux
+	cfg.Runtime.Profile = model.RuntimeProfile("microvm")
+	cfg.Runtime.ClassName = "sandbox-runner-microvm"
+	cfg.K8s.Provider = provider.legacy
+	cfg.K8s.Context = provider.context
+	cfg.K8s.Namespace = "ai-sandbox-runner-runs"
+	cfg.Run.Image = "ghcr.io/lotosli/sandbox-runner:latest"
+	cfg.Sandbox.Image = cfg.Run.Image
+	cfg.Run.SandboxID = "k8s-microvm-" + provider.name + "-" + filepath.Base(dir)
+	cfg.Run.ServiceName = cfg.Run.ServiceName + "-" + provider.name + "-microvm"
+
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("yaml.Marshal() error = %v", err)
+	}
+	outputPath := filepath.Join(dir, "run.k8s."+provider.name+".microvm.yaml")
 	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v", outputPath, err)
 	}

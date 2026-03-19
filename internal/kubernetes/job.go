@@ -24,6 +24,7 @@ func BuildJob(req model.RunRequest, namespace string) *batchv1.Job {
 
 	command := []string{"/usr/local/bin/sandbox-runner", "run", "--config", "/etc/sandbox/run.yaml", "--policy", "/etc/sandbox/policy.yaml", "--"}
 	command = append(command, req.RunConfig.Run.Command...)
+	runConfigName := configMapName(runID)
 
 	return &batchv1.Job{
 		TypeMeta: metav1.TypeMeta{
@@ -42,7 +43,7 @@ func BuildJob(req model.RunRequest, namespace string) *batchv1.Job {
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
 					RestartPolicy:      corev1.RestartPolicyNever,
-					ServiceAccountName: "sandbox-runner",
+					ServiceAccountName: serviceAccountName(req),
 					RuntimeClassName:   runtimeClassName(req),
 					Containers: []corev1.Container{
 						{
@@ -70,7 +71,7 @@ func BuildJob(req model.RunRequest, namespace string) *batchv1.Job {
 					},
 					Volumes: []corev1.Volume{
 						{Name: "workspace", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}},
-						{Name: "run-config", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: "sandbox-runner-config"}}}},
+						{Name: "run-config", VolumeSource: corev1.VolumeSource{ConfigMap: &corev1.ConfigMapVolumeSource{LocalObjectReference: corev1.LocalObjectReference{Name: runConfigName}}}},
 					},
 				},
 			},
@@ -86,10 +87,10 @@ func defaultImage(req model.RunRequest) string {
 }
 
 func runtimeClassName(req model.RunRequest) *string {
-	if req.RunConfig.Runtime.Profile != model.RuntimeProfileKata {
+	if !model.RequiresRuntimeClass(model.ExecutionRuntimeProfileForConfig(req.RunConfig)) {
 		return nil
 	}
-	value := req.RunConfig.Kata.RuntimeClassName
+	value := model.RuntimeClassNameForConfig(req.RunConfig)
 	if value == "" {
 		return nil
 	}
@@ -115,4 +116,11 @@ func backendProvider(cfg model.RunConfig) string {
 	default:
 		return string(cfg.Backend.Kind)
 	}
+}
+
+func serviceAccountName(req model.RunRequest) string {
+	if req.RunConfig.K8s.ServiceAccountName != "" {
+		return req.RunConfig.K8s.ServiceAccountName
+	}
+	return "default"
 }

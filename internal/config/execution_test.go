@@ -78,3 +78,46 @@ func TestNormalizeRunConfigDerivesExecutionProviderFromLegacyK8sProvider(t *test
 		})
 	}
 }
+
+func TestNormalizeRunConfigNormalizesMicroVMAliasToFirecracker(t *testing.T) {
+	cfg := DefaultRunConfig()
+	cfg.Execution = model.ExecutionConfig{
+		Backend:        model.ExecutionBackendK8s,
+		Provider:       model.ProviderK3s,
+		RuntimeProfile: model.ExecutionRuntimeProfile("microvm"),
+	}
+	cfg.Backend.Kind = model.BackendKindK8s
+	cfg.Platform.RunMode = model.RunModeSTGLinux
+	cfg.Runtime.Profile = model.RuntimeProfile("microvm")
+	cfg.Runtime.ClassName = "sandbox-runner-microvm"
+
+	cfg = NormalizeRunConfig(cfg)
+	if cfg.Execution.RuntimeProfile != model.ExecutionRuntimeProfileFirecracker {
+		t.Fatalf("execution.runtime_profile = %s, want %s", cfg.Execution.RuntimeProfile, model.ExecutionRuntimeProfileFirecracker)
+	}
+	if cfg.Runtime.Profile != model.RuntimeProfileFirecracker {
+		t.Fatalf("runtime.profile = %s, want %s", cfg.Runtime.Profile, model.RuntimeProfileFirecracker)
+	}
+	if cfg.Kata.RuntimeClassName != "sandbox-runner-microvm" {
+		t.Fatalf("kata.runtime_class_name = %q, want sandbox-runner-microvm", cfg.Kata.RuntimeClassName)
+	}
+}
+
+func TestNormalizeRunConfigKeepsLegacyRuntimeClassForConditionalRuntime(t *testing.T) {
+	cfg := DefaultRunConfig()
+	cfg.Execution = model.ExecutionConfig{
+		Backend:        model.ExecutionBackendK8s,
+		Provider:       model.ProviderMinikube,
+		RuntimeProfile: model.ExecutionRuntimeProfileFirecracker,
+	}
+	cfg.Backend.Kind = model.BackendKindK8s
+	cfg.Platform.RunMode = model.RunModeSTGLinux
+	cfg.Runtime.Profile = model.RuntimeProfileFirecracker
+	cfg.Runtime.ClassName = ""
+	cfg.Kata.RuntimeClassName = "sandbox-runner-microvm"
+
+	cfg = NormalizeRunConfig(cfg)
+	if cfg.Runtime.ClassName != "sandbox-runner-microvm" {
+		t.Fatalf("runtime.class_name = %q, want sandbox-runner-microvm", cfg.Runtime.ClassName)
+	}
+}

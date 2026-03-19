@@ -162,6 +162,10 @@ func (c *K8sSubmitCommand) Run(ctx context.Context) (int, error) {
 	if err != nil {
 		return 1, err
 	}
+	configMap, err := kubernetes.BuildConfigMap(req, c.Namespace)
+	if err != nil {
+		return 1, err
+	}
 	contextName := c.KubeContext
 	if contextName == "" {
 		contextName = req.RunConfig.K8s.Context
@@ -172,6 +176,9 @@ func (c *K8sSubmitCommand) Run(ctx context.Context) (int, error) {
 	}
 	submitter, err := sdk.NewSubmitter(kubeconfig, contextName, req.RunConfig.K8s.Provider)
 	if err != nil {
+		return 1, err
+	}
+	if _, err := submitter.ApplyConfigMap(ctx, configMap); err != nil {
 		return 1, err
 	}
 	result, err := submitter.SubmitJob(ctx, spec)

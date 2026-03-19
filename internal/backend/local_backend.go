@@ -48,7 +48,7 @@ func (b *LocalBackend) RuntimeInfo(ctx context.Context) (model.RuntimeInfo, erro
 		ProviderKind:     string(b.kind),
 		BackendProvider:  backendProviderForConfig(b.cfg),
 		RuntimeProfile:   string(b.cfg.Runtime.Profile),
-		RuntimeClassName: b.cfg.Kata.RuntimeClassName,
+		RuntimeClassName: model.RuntimeClassNameForConfig(b.cfg),
 		HostOS:           runtime.GOOS,
 		HostArch:         runtime.GOARCH,
 		Available:        true,
@@ -65,12 +65,10 @@ func (b *LocalBackend) RuntimeInfo(ctx context.Context) (model.RuntimeInfo, erro
 	default:
 		info.ContainerRuntime = string(b.kind)
 	}
-	if b.cfg.Runtime.Profile == model.RuntimeProfileKata {
-		info.Virtualization = "kata"
-	} else if b.cfg.Runtime.Profile == model.RuntimeProfileOrbStackDocker || b.cfg.Runtime.Profile == model.RuntimeProfileOrbStackK8s {
+	if b.cfg.Runtime.Profile == model.RuntimeProfileOrbStackDocker || b.cfg.Runtime.Profile == model.RuntimeProfileOrbStackK8s {
 		info.Virtualization = "none"
 	} else {
-		info.Virtualization = "none"
+		info.Virtualization = model.VirtualizationForRuntimeProfile(b.cfg.Runtime.Profile)
 	}
 	return info, nil
 }
