@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -73,8 +74,8 @@ func (Runner) Run(ctx context.Context, spec CommandSpec, handler IOHandler) (Res
 		stderrLines = streamPipe(runCtx, stderrPipe, "stderr", spec, handler)
 	}()
 
-	waitErr := cmd.Wait()
 	wg.Wait()
+	waitErr := cmd.Wait()
 
 	finished := time.Now().UTC()
 	result.FinishedAt = finished
@@ -106,13 +107,55 @@ func (Runner) Run(ctx context.Context, spec CommandSpec, handler IOHandler) (Res
 }
 
 func mergedEnv(extra map[string]string) map[string]string {
-	env := map[string]string{}
+	base := map[string]string{}
 	for _, item := range os.Environ() {
 		parts := splitEnv(item)
-		env[parts[0]] = parts[1]
+		base[parts[0]] = parts[1]
 	}
-	for k, v := range extra {
+	env := map[string]string{}
+	for k, v := range base {
 		env[k] = v
+	}
+	if len(extra) == 0 {
+		return env
+	}
+
+	keys := make([]string, 0, len(extra))
+	for key := range extra {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	resolved := map[string]string{}
+	resolving := map[string]bool{}
+	var resolve func(string) string
+	resolve = func(key string) string {
+		if value, ok := resolved[key]; ok {
+			return value
+		}
+		raw, ok := extra[key]
+		if !ok {
+			return base[key]
+		}
+		if resolving[key] {
+			return base[key]
+		}
+		resolving[key] = true
+		value := os.Expand(raw, func(ref string) string {
+			if ref == key {
+				return base[ref]
+			}
+			if _, ok := extra[ref]; ok {
+				return resolve(ref)
+			}
+			return base[ref]
+		})
+		delete(resolving, key)
+		resolved[key] = value
+		return value
+	}
+	for _, key := range keys {
+		env[key] = resolve(key)
 	}
 	return env
 }

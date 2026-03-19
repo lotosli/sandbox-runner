@@ -9,7 +9,10 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -77,7 +80,8 @@ func (e DockerExecutor) Run(ctx context.Context, spec Spec, handler proc.IOHandl
 	containerCfg := &mobycontainer.Config{
 		Image:        image,
 		Cmd:          spec.Command,
-		Env:          envSlice(spec.Env),
+		Env:          envSlice(dockerCommandEnv(spec.Env)),
+		User:         dockerContainerUser(),
 		WorkingDir:   "/workspace",
 		AttachStdout: true,
 		AttachStderr: true,
@@ -232,6 +236,9 @@ func (e DockerExecutor) pullImage(ctx context.Context, image string) error {
 	if image == "" {
 		return fmt.Errorf("run.image is required for docker mode")
 	}
+	if _, err := e.client.ImageInspect(ctx, image); err == nil {
+		return nil
+	}
 	resp, err := e.client.ImagePull(ctx, image, mobyclient.ImagePullOptions{})
 	if err != nil {
 		return err
@@ -354,7 +361,19 @@ func dockerLocalPlatform(cfg model.RunConfig) string {
 var (
 	dockerContextShow    = currentDockerContext
 	dockerContextInspect = inspectDockerContext
+	dockerUserLookup     = currentDockerUser
 )
+
+func dockerContainerUser() string {
+	if runtime.GOOS == "windows" {
+		return ""
+	}
+	uid, gid, err := dockerUserLookup()
+	if err != nil || uid == "" || gid == "" {
+		return ""
+	}
+	return uid + ":" + gid
+}
 
 func dockerClientHost(cfg model.RunConfig) (string, error) {
 	contextName := strings.TrimSpace(cfg.Docker.Context)
@@ -391,6 +410,20 @@ func dockerClientHost(cfg model.RunConfig) (string, error) {
 		}
 	}
 	return "", err
+}
+
+func currentDockerUser() (string, string, error) {
+	current, err := user.Current()
+	if err != nil {
+		return "", "", err
+	}
+	if _, err := strconv.Atoi(current.Uid); err != nil {
+		return "", "", err
+	}
+	if _, err := strconv.Atoi(current.Gid); err != nil {
+		return "", "", err
+	}
+	return current.Uid, current.Gid, nil
 }
 
 func currentDockerContext() string {
@@ -441,6 +474,29 @@ func envSlice(env map[string]string) []string {
 		items = append(items, key+"="+value)
 	}
 	return items
+}
+
+func dockerCommandEnv(env map[string]string) map[string]string {
+	out := map[string]string{}
+	for key, value := range env {
+		out[key] = value
+	}
+	if strings.TrimSpace(out["HOME"]) == "" {
+		out["HOME"] = "/tmp"
+	}
+	if strings.TrimSpace(out["XDG_CACHE_HOME"]) == "" {
+		out["XDG_CACHE_HOME"] = "/tmp/.cache"
+	}
+	if strings.TrimSpace(out["GOCACHE"]) == "" {
+		out["GOCACHE"] = "/tmp/.cache/go-build"
+	}
+	if strings.TrimSpace(out["GOPATH"]) == "" {
+		out["GOPATH"] = "/tmp/go"
+	}
+	if strings.TrimSpace(out["GOMODCACHE"]) == "" {
+		out["GOMODCACHE"] = "/tmp/go/pkg/mod"
+	}
+	return out
 }
 
 func inspectRaw(raw json.RawMessage) map[string]any {

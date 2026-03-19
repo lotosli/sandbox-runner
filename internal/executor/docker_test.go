@@ -6,6 +6,7 @@ import (
 	"encoding/binary"
 	"io"
 	"iter"
+	"slices"
 	"testing"
 	"time"
 
@@ -23,6 +24,7 @@ type fakeDockerClient struct {
 	waitStatus   int64
 	inspect      mobyclient.ContainerInspectResult
 	imageInspect mobyclient.ImageInspectResult
+	createOpts   mobyclient.ContainerCreateOptions
 }
 
 func (f *fakeDockerClient) ImagePull(ctx context.Context, ref string, options mobyclient.ImagePullOptions) (mobyclient.ImagePullResponse, error) {
@@ -41,7 +43,7 @@ func (f *fakeDockerClient) ImageInspect(ctx context.Context, image string, opts 
 
 func (f *fakeDockerClient) ContainerCreate(ctx context.Context, options mobyclient.ContainerCreateOptions) (mobyclient.ContainerCreateResult, error) {
 	_ = ctx
-	_ = options
+	f.createOpts = options
 	if f.createdID == "" {
 		f.createdID = "ctr-123"
 	}
@@ -175,6 +177,51 @@ func TestDockerExecutorRunUsesSDKClient(t *testing.T) {
 	}
 	if len(handler.logs) != 2 {
 		t.Fatalf("captured logs = %d, want 2", len(handler.logs))
+	}
+}
+
+func TestDockerExecutorRunUsesHostUserForBindMountedWorkspace(t *testing.T) {
+	cfg := config.DefaultRunConfig()
+	cfg.Run.Image = "alpine:3.20"
+	cfg.Platform.RunMode = model.RunModeLocalDocker
+
+	origUserLookup := dockerUserLookup
+	defer func() {
+		dockerUserLookup = origUserLookup
+	}()
+	dockerUserLookup = func() (string, string, error) {
+		return "123", "456", nil
+	}
+
+	client := &fakeDockerClient{
+		waitStatus: 0,
+		logs:       multiplexedLogs(),
+	}
+	exec := DockerExecutor{runCfg: cfg, client: client}
+	_, err := exec.Run(context.Background(), Spec{
+		Phase:           model.PhaseExecute,
+		Command:         []string{"true"},
+		Dir:             t.TempDir(),
+		Timeout:         3 * time.Second,
+		RunID:           "r-1",
+		Attempt:         1,
+		CommandClass:    "test.run",
+		ArtifactDir:     t.TempDir(),
+		LogLineMaxBytes: 8192,
+		RunConfig:       cfg,
+		Target:          model.ExecutionTarget{Arch: "amd64"},
+	}, &captureLogs{})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if got := client.createOpts.Config.User; got != "123:456" {
+		t.Fatalf("container user = %q, want 123:456", got)
+	}
+	if !slices.Contains(client.createOpts.Config.Env, "HOME=/tmp") {
+		t.Fatalf("container env = %#v, want HOME=/tmp", client.createOpts.Config.Env)
+	}
+	if !slices.Contains(client.createOpts.Config.Env, "XDG_CACHE_HOME=/tmp/.cache") {
+		t.Fatalf("container env = %#v, want XDG_CACHE_HOME=/tmp/.cache", client.createOpts.Config.Env)
 	}
 }
 
