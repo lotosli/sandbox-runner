@@ -1,9 +1,9 @@
 run:
-  service_name: sandbox-runner-k3s-microvm-demo
+  service_name: sandbox-runner-microk8s-isolated-demo
   mode: stg
   run_id: ""
   attempt: 1
-  sandbox_id: stg-k3s-microvm
+  sandbox_id: stg-microk8s-isolated
   workspace_dir: /tmp
   artifact_dir: /tmp/.sandbox-runner
   otlp_endpoint: http://127.0.0.1:4318
@@ -20,7 +20,7 @@ collector:
 
 execution:
   backend: k8s
-  provider: k3s
+  provider: microk8s
   runtime_profile: microvm
 
 backend:
@@ -37,7 +37,7 @@ platform:
   container_execution_mode: host-runner
 
 k8s:
-  provider: k3s
+  provider: microk8s
   kubeconfig: ~/.kube/config
-  context: k3d-k3s
+  context: microk8s
   namespace: ai-sandbox-runner-runs

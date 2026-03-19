@@ -1,8 +1,5 @@
 .sandbox-runner/
-.sandbox-run/
 dist/
-sandbox-run
-sandbox-run.exe
 sandbox-runner
 sandbox-runner.exe
 !/cmd/sandbox-runner/

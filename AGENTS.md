@@ -43,7 +43,7 @@ Future work in this repo must treat this as the source of truth, even where the 
 
 The normal control flow is:
 
-1. `cmd/sandbox-run/main.go` starts the CLI.
+1. `cmd/sandbox-runner/main.go` starts the CLI.
 2. `internal/cli` parses subcommands and loads config plus policy.
 3. `internal/phase.Engine` orchestrates `prepare -> setup -> execute -> verify -> collect`.
 4. `internal/backend` exposes a uniform sandbox/provider interface.
@@ -338,15 +338,14 @@ Start in `internal/phase/engine.go`, then propagate only the minimum downstream 
 - `internal/model` and config defaults already contain `apple-container` and `orbstack` concepts, but current validation and backend factory do not fully treat them as supported production paths. Assume they are planned or partial unless the implementation is completed end to end.
 - `internal/backend/LocalBackend` is mostly a capability/runtime shim. Real local command execution happens in `internal/executor`.
 - The current codebase still mixes older `run_mode`-centric modeling with provider-specific fields. New work should reduce that drift and move toward the explicit execution triple model.
-- Hidden `.sandbox-run/` directories and `dist/` are generated outputs, not architecture sources.
+- Hidden `.sandbox-runner/` directories and `dist/` are generated outputs, not architecture sources.
 
 ## Generated Or External Directories
 
 Do not treat these as source areas for architecture work:
 
 - `.git/`
-- `.sandbox-run/`
-- `cmd/sandbox-run/.sandbox-run/`
+- `.sandbox-runner/`
 - `dist/`
 
 They are repository metadata or generated runtime output.

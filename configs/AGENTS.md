@@ -13,5 +13,6 @@ Rules:
 - treat these files as documentation plus smoke-test fixtures
 - keep samples aligned with `internal/model`, `internal/config`, and README
 - if a mode is added or renamed, update or add a sample here
-- sample naming should converge on `backend[.provider][.runtime].sample.yaml`
-- legacy mixed-layer names may be kept only as compatibility aliases; internal semantics must still map to `backend/provider/runtime_profile`
+- sample naming should be platform-first and user-facing, such as `run.local.sample.yaml`, `run.k3s.sample.yaml`, or `run.k3s.isolated.sample.yaml`
+- do not expose `backend`, `provider`, or `runtime_profile` terminology directly in sample file names
+- internal semantics must still map cleanly to `backend/provider/runtime_profile`

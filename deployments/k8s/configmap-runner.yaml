@@ -5,6 +5,6 @@ metadata:
   namespace: ai-sandbox-runner-runs
 data:
   run.yaml: |
-    # replace with configs/run.sample.yaml content
+    # replace with configs/run.local.sample.yaml content
   policy.yaml: |
     # replace with configs/policy.sample.yaml content

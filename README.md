@@ -26,7 +26,7 @@ A Go-based runner for AI agents, IDE plugins, and platform automation workflows.
 
 ```bash
 make build
-./sandbox-runner run --config configs/run.sample.yaml --policy configs/policy.sample.yaml -- go test ./...
+./sandbox-runner run --config configs/run.local.sample.yaml --policy configs/policy.sample.yaml -- go test ./...
 ./sandbox-runner doctor
 ./sandbox-runner --version
 ```

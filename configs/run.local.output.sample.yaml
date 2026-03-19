@@ -1,5 +1,5 @@
 run:
-  service_name: sandbox-runner-output-demo
+  service_name: sandbox-runner-local-output-demo
   mode: local
   run_id: ""
   attempt: 1

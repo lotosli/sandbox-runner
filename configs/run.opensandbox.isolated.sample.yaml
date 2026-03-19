@@ -1,5 +1,5 @@
 run:
-  service_name: sandbox-runner-opensandbox-kata-demo
+  service_name: sandbox-runner-opensandbox-isolated-demo
   mode: stg
   run_id: ""
   attempt: 1

@@ -12,7 +12,7 @@ go test ./tests/integration/... -run TestDevContainerLanguageSamples
 go test ./tests/integration/... -run TestOpenSandboxLanguageSamples
 go test ./tests/integration/... -run TestAppleContainerLanguageSamples
 go test ./tests/integration/... -run TestK8sProviderLanguageSamplesRenderJobs
-go test ./tests/integration/... -run TestK8sProviderLanguageSamplesRenderMicroVMJobs
+go test ./tests/integration/... -run TestK8sProviderLanguageSamplesRenderIsolatedJobs
 ```
 
 For the normal local developer path:
@@ -34,7 +34,7 @@ make test
 - OpenSandbox integration tests require a local `opensandbox-server` and a working Docker daemon
 - language sample integration tests cover `local_direct`, Docker, DevContainer, OpenSandbox, and Apple container sample configs
 - K8s provider language tests cover `minikube`, `k3s`, and `microk8s` through `validate` plus `k8s render-job`
-- K8s microvm tests cover the same providers through the `microvm` compatibility alias, normalized `firecracker` runtime profile, and rendered `runtimeClassName`
+- K8s isolated-mode tests cover the same providers through the `microvm` compatibility alias, normalized `firecracker` runtime profile, and rendered `runtimeClassName`
 - real `k8s submit-job` verification depends on a reachable local cluster context for that provider and is expected to stay environment-dependent
 - a real local microvm smoke run also needs a `RuntimeClass` such as `sandbox-runner-microvm` and a job image that already contains `/usr/local/bin/sandbox-runner`
 - language sample integration tests copy each example workspace into a temp directory before running `validate`, `run --json-summary`, and `replay`

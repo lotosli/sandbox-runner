@@ -1,9 +1,9 @@
 run:
-  service_name: sandbox-runner-minikube-microvm-demo
+  service_name: sandbox-runner-minikube-isolated-demo
   mode: stg
   run_id: ""
   attempt: 1
-  sandbox_id: stg-minikube-microvm
+  sandbox_id: stg-minikube-isolated
   workspace_dir: /tmp
   artifact_dir: /tmp/.sandbox-runner
   otlp_endpoint: http://127.0.0.1:4318

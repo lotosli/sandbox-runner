@@ -74,7 +74,7 @@ func TestK8sProviderLanguageSamplesRenderJobs(t *testing.T) {
 	}
 }
 
-func TestK8sProviderLanguageSamplesRenderMicroVMJobs(t *testing.T) {
+func TestK8sProviderLanguageSamplesRenderIsolatedJobs(t *testing.T) {
 	root := repoRoot(t)
 	binary := buildBinary(t, root)
 	policyPath := filepath.Join(root, "configs", "policy.sample.yaml")
@@ -92,7 +92,7 @@ func TestK8sProviderLanguageSamplesRenderMicroVMJobs(t *testing.T) {
 				copiedDir := filepath.Join(workDir, filepath.Base(sample.dir))
 				copyTree(t, sample.dir, copiedDir)
 
-				cfgPath, _ := writeK8sMicroVMExampleConfig(t, copiedDir, provider)
+				cfgPath, _ := writeK8sIsolatedExampleConfig(t, copiedDir, provider)
 				runCommand(t, root, binary, "validate", "--config", cfgPath, "--policy", policyPath)
 				rendered := runCommand(t, root, binary, "k8s", "render-job", "--config", cfgPath, "--policy", policyPath)
 
@@ -144,14 +144,14 @@ func writeK8sExampleConfig(t *testing.T, dir string, provider k8sExampleProvider
 	if err != nil {
 		t.Fatalf("yaml.Marshal() error = %v", err)
 	}
-	outputPath := filepath.Join(dir, "run.k8s."+provider.name+".yaml")
+	outputPath := filepath.Join(dir, "run."+provider.name+".yaml")
 	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v", outputPath, err)
 	}
 	return outputPath, cfg
 }
 
-func writeK8sMicroVMExampleConfig(t *testing.T, dir string, provider k8sExampleProvider) (string, model.RunConfig) {
+func writeK8sIsolatedExampleConfig(t *testing.T, dir string, provider k8sExampleProvider) (string, model.RunConfig) {
 	t.Helper()
 	cfgPath := filepath.Join(dir, "run.docker.sample.yaml")
 	cfg, err := config.LoadRunConfig(cfgPath)
@@ -172,14 +172,14 @@ func writeK8sMicroVMExampleConfig(t *testing.T, dir string, provider k8sExampleP
 	cfg.K8s.Namespace = "ai-sandbox-runner-runs"
 	cfg.Run.Image = "ghcr.io/lotosli/sandbox-runner:latest"
 	cfg.Sandbox.Image = cfg.Run.Image
-	cfg.Run.SandboxID = "k8s-microvm-" + provider.name + "-" + filepath.Base(dir)
-	cfg.Run.ServiceName = cfg.Run.ServiceName + "-" + provider.name + "-microvm"
+	cfg.Run.SandboxID = "k8s-isolated-" + provider.name + "-" + filepath.Base(dir)
+	cfg.Run.ServiceName = cfg.Run.ServiceName + "-" + provider.name + "-isolated"
 
 	data, err := yaml.Marshal(cfg)
 	if err != nil {
 		t.Fatalf("yaml.Marshal() error = %v", err)
 	}
-	outputPath := filepath.Join(dir, "run.k8s."+provider.name+".microvm.yaml")
+	outputPath := filepath.Join(dir, "run."+provider.name+".isolated.yaml")
 	if err := os.WriteFile(outputPath, data, 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v", outputPath, err)
 	}

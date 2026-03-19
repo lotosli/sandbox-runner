@@ -1,9 +1,9 @@
 run:
-  service_name: sandbox-runner-microk8s-k8s-demo
+  service_name: sandbox-runner-minikube-demo
   mode: stg
   run_id: ""
   attempt: 1
-  sandbox_id: stg-microk8s-k8s
+  sandbox_id: stg-minikube
   workspace_dir: ..
   artifact_dir: ../.sandbox-runner
   otlp_endpoint: http://127.0.0.1:4318
@@ -17,7 +17,7 @@ run:
 
 execution:
   backend: k8s
-  provider: microk8s
+  provider: minikube
   runtime_profile: default
 
 backend:
@@ -44,6 +44,7 @@ platform:
     local_orbstack_machine_mode: false
 
 k8s:
-  provider: microk8s
+  provider: minikube
   kubeconfig: ~/.kube/config
+  context: minikube
   namespace: ai-sandbox-runner-runs
