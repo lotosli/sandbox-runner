@@ -21,7 +21,17 @@ func TestRunnerResolvesCommandFromChildPATH(t *testing.T) {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
 	scriptPath := filepath.Join(binDir, "child-path-tool")
-	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\nprintf 'child-path-ok\\n'\n"), 0o755); err != nil {
+	script := `#!/bin/sh
+set -eu
+case "${PATH:-}" in
+  *'$PATH'*)
+    printf 'literal-path-not-expanded\n' >&2
+    exit 1
+    ;;
+esac
+printf 'child-path-ok\n'
+`
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
@@ -48,6 +58,20 @@ func TestRunnerResolvesCommandFromChildPATH(t *testing.T) {
 	}
 	if len(lines) != 1 || lines[0] != "child-path-ok" {
 		t.Fatalf("stdout lines = %#v, want [child-path-ok]", lines)
+	}
+}
+
+func TestMergedEnvExpandsReferencesAgainstParentEnvironment(t *testing.T) {
+	t.Setenv("BASE_TOKEN", "base-value")
+	env := mergedEnv(map[string]string{
+		"PATH":       ".sample-bin:$PATH",
+		"TRACE_ATTR": "token=${BASE_TOKEN}",
+	})
+	if got := env["TRACE_ATTR"]; got != "token=base-value" {
+		t.Fatalf("TRACE_ATTR = %q, want token=base-value", got)
+	}
+	if got := env["PATH"]; got == ".sample-bin:$PATH" {
+		t.Fatalf("PATH = %q, want expanded parent PATH reference", got)
 	}
 }
 
