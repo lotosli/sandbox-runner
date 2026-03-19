@@ -105,3 +105,20 @@ func TestPrintRunSummaryJSON(t *testing.T) {
 		t.Fatalf("read_order = %#v, want index first", summary.ReadOrder)
 	}
 }
+
+func TestEnsureK8sRequestIdentity(t *testing.T) {
+	req := model.RunRequest{}
+	got := ensureK8sRequestIdentity(req)
+	if got.RunConfig.Run.RunID == "" {
+		t.Fatal("run_id = empty, want generated value")
+	}
+	if !strings.HasPrefix(got.RunConfig.Run.RunID, "r-") {
+		t.Fatalf("run_id = %q, want r- prefix", got.RunConfig.Run.RunID)
+	}
+
+	req.RunConfig.Run.RunID = "fixed-id"
+	got = ensureK8sRequestIdentity(req)
+	if got.RunConfig.Run.RunID != "fixed-id" {
+		t.Fatalf("run_id = %q, want fixed-id", got.RunConfig.Run.RunID)
+	}
+}

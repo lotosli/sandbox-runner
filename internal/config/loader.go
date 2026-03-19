@@ -198,6 +198,8 @@ func normalizeRunConfigWithBase(cfg model.RunConfig, baseDir string) model.RunCo
 		if cfg.K8s.Context == "" {
 			cfg.K8s.Context = cfg.OrbStack.KubeContext
 		}
+	} else if cfg.K8s.Context == "" {
+		cfg.K8s.Context = model.DefaultK8sContext(cfg.K8s.Provider)
 	}
 	if cfg.Sandbox.Image == "" {
 		cfg.Sandbox.Image = cfg.Run.Image

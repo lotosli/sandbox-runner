@@ -360,10 +360,7 @@ func telemetryBackendProvider(cfg model.RunConfig) string {
 		}
 		return "docker"
 	case model.BackendKindK8s:
-		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
-			return "orbstack"
-		}
-		return "k8s"
+		return string(model.ExecutionProviderForK8sProvider(cfg.K8s.Provider))
 	case model.BackendKindOrbStackMachine:
 		return "orbstack"
 	default:
@@ -390,8 +387,8 @@ func telemetryLocalPlatform(cfg model.RunConfig) string {
 		return "orbstack"
 	case cfg.Backend.Kind == model.BackendKindDocker && cfg.Docker.Provider == model.DockerProviderOrbStack:
 		return "orbstack"
-	case cfg.Backend.Kind == model.BackendKindK8s && cfg.K8s.Provider == model.K8sProviderOrbStackLocal:
-		return "orbstack"
+	case cfg.Backend.Kind == model.BackendKindK8s:
+		return model.K8sLocalPlatform(cfg.K8s.Provider)
 	default:
 		return ""
 	}

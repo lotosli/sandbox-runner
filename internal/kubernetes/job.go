@@ -97,6 +97,9 @@ func runtimeClassName(req model.RunRequest) *string {
 }
 
 func backendProvider(cfg model.RunConfig) string {
+	if cfg.Execution.Provider != "" {
+		return string(cfg.Execution.Provider)
+	}
 	switch cfg.Backend.Kind {
 	case model.BackendKindDocker:
 		if cfg.Docker.Provider == model.DockerProviderOrbStack {
@@ -104,10 +107,7 @@ func backendProvider(cfg model.RunConfig) string {
 		}
 		return "docker"
 	case model.BackendKindK8s:
-		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
-			return "orbstack"
-		}
-		return "k8s"
+		return string(model.ExecutionProviderForK8sProvider(cfg.K8s.Provider))
 	case model.BackendKindDirect:
 		return "native"
 	case model.BackendKindOrbStackMachine:

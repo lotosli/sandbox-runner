@@ -40,7 +40,7 @@ func ValidateRunConfig(cfg model.RunConfig) error {
 		return invalidSchema("execution.provider is required")
 	}
 	switch cfg.Execution.Provider {
-	case model.ProviderNative, model.ProviderOrbStack, model.ProviderKindKind, model.ProviderMinikube, model.ProviderDockerDesktop, model.ProviderColima, model.ProviderGKE, model.ProviderEKS, model.ProviderAKS, model.ProviderOpenSandbox:
+	case model.ProviderNative, model.ProviderOrbStack, model.ProviderKindKind, model.ProviderMinikube, model.ProviderK3s, model.ProviderMicroK8s, model.ProviderDockerDesktop, model.ProviderColima, model.ProviderGKE, model.ProviderEKS, model.ProviderAKS, model.ProviderOpenSandbox:
 	default:
 		return invalidSchema(fmt.Sprintf("unsupported execution.provider: %s", cfg.Execution.Provider))
 	}
@@ -134,7 +134,7 @@ func ValidateRunConfig(cfg model.RunConfig) error {
 	}
 	if cfg.Backend.Kind == model.BackendKindK8s {
 		switch cfg.K8s.Provider {
-		case model.K8sProviderRemote, model.K8sProviderOrbStackLocal:
+		case model.K8sProviderRemote, model.K8sProviderOrbStackLocal, model.K8sProviderMinikube, model.K8sProviderK3s, model.K8sProviderMicroK8s:
 		default:
 			return invalidSchema(fmt.Sprintf("unsupported k8s.provider: %s", cfg.K8s.Provider))
 		}

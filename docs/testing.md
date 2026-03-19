@@ -11,6 +11,7 @@ go test ./tests/integration/... -run TestDockerLanguageSamples
 go test ./tests/integration/... -run TestDevContainerLanguageSamples
 go test ./tests/integration/... -run TestOpenSandboxLanguageSamples
 go test ./tests/integration/... -run TestAppleContainerLanguageSamples
+go test ./tests/integration/... -run TestK8sProviderLanguageSamplesRenderJobs
 ```
 
 For the normal local developer path:
@@ -31,6 +32,8 @@ make test
 - OrbStack Docker, Machine, and K8s integration requires OrbStack on macOS
 - OpenSandbox integration tests require a local `opensandbox-server` and a working Docker daemon
 - language sample integration tests cover `local_direct`, Docker, DevContainer, OpenSandbox, and Apple container sample configs
+- K8s provider language tests cover `minikube`, `k3s`, and `microk8s` through `validate` plus `k8s render-job`
+- real `k8s submit-job` verification depends on a reachable local cluster context for that provider and is expected to stay environment-dependent
 - language sample integration tests copy each example workspace into a temp directory before running `validate`, `run --json-summary`, and `replay`
 - the local language sample matrix currently targets POSIX shells and checks `go`, `python3`, `node` + `npm`, `java` + `javac`, and `sh`
 - integration tests are expected to skip automatically when local prerequisites are unavailable

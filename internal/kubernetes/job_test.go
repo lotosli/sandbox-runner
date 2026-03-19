@@ -40,26 +40,48 @@ func TestBuildJobLeavesRuntimeClassNameEmptyForNative(t *testing.T) {
 }
 
 func TestBuildJobAnnotatesOrbStackProvider(t *testing.T) {
-	cfg := config.DefaultRunConfig()
-	cfg.Platform.RunMode = model.RunModeSTGLinux
-	cfg.Backend.Kind = model.BackendKindK8s
-	cfg.K8s.Provider = model.K8sProviderOrbStackLocal
-	cfg.Runtime.Profile = model.RuntimeProfileOrbStackK8s
-	cfg.Run.RunID = "run-orbstack"
-	cfg.Run.SandboxID = "sbx-orbstack"
+	tests := []struct {
+		name             string
+		execution        model.ProviderKind
+		legacyProvider   model.K8sProvider
+		runtimeProfile   model.RuntimeProfile
+		wantProviderName string
+	}{
+		{name: "orbstack", execution: model.ProviderOrbStack, legacyProvider: model.K8sProviderOrbStackLocal, runtimeProfile: model.RuntimeProfileOrbStackK8s, wantProviderName: "orbstack"},
+		{name: "minikube", execution: model.ProviderMinikube, legacyProvider: model.K8sProviderMinikube, runtimeProfile: model.RuntimeProfileNative, wantProviderName: "minikube"},
+		{name: "k3s", execution: model.ProviderK3s, legacyProvider: model.K8sProviderK3s, runtimeProfile: model.RuntimeProfileNative, wantProviderName: "k3s"},
+		{name: "microk8s", execution: model.ProviderMicroK8s, legacyProvider: model.K8sProviderMicroK8s, runtimeProfile: model.RuntimeProfileNative, wantProviderName: "microk8s"},
+	}
 
-	job := BuildJob(model.RunRequest{RunConfig: cfg}, "sandbox-system")
-	if job.Labels["backend_provider"] != "orbstack" {
-		t.Fatalf("backend_provider label = %q, want orbstack", job.Labels["backend_provider"])
-	}
-	got := ""
-	for _, item := range job.Spec.Template.Spec.Containers[0].Env {
-		if item.Name == "BACKEND_PROVIDER" {
-			got = item.Value
-			break
-		}
-	}
-	if got != "orbstack" {
-		t.Fatalf("BACKEND_PROVIDER env = %q, want orbstack", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.DefaultRunConfig()
+			cfg.Platform.RunMode = model.RunModeSTGLinux
+			cfg.Backend.Kind = model.BackendKindK8s
+			cfg.Execution = model.ExecutionConfig{
+				Backend:        model.ExecutionBackendK8s,
+				Provider:       tt.execution,
+				RuntimeProfile: model.ExecutionRuntimeProfileDefault,
+			}
+			cfg.K8s.Provider = tt.legacyProvider
+			cfg.Runtime.Profile = tt.runtimeProfile
+			cfg.Run.RunID = "run-" + tt.name
+			cfg.Run.SandboxID = "sbx-" + tt.name
+
+			job := BuildJob(model.RunRequest{RunConfig: cfg}, "sandbox-system")
+			if job.Labels["backend_provider"] != tt.wantProviderName {
+				t.Fatalf("backend_provider label = %q, want %s", job.Labels["backend_provider"], tt.wantProviderName)
+			}
+			got := ""
+			for _, item := range job.Spec.Template.Spec.Containers[0].Env {
+				if item.Name == "BACKEND_PROVIDER" {
+					got = item.Value
+					break
+				}
+			}
+			if got != tt.wantProviderName {
+				t.Fatalf("BACKEND_PROVIDER env = %q, want %s", got, tt.wantProviderName)
+			}
+		})
 	}
 }

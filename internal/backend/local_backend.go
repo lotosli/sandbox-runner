@@ -61,9 +61,7 @@ func (b *LocalBackend) RuntimeInfo(ctx context.Context) (model.RuntimeInfo, erro
 		}
 	case model.BackendKindK8s:
 		info.ContainerRuntime = "kubernetes"
-		if b.cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
-			info.LocalPlatform = "orbstack"
-		}
+		info.LocalPlatform = model.K8sLocalPlatform(b.cfg.K8s.Provider)
 	default:
 		info.ContainerRuntime = string(b.kind)
 	}

@@ -29,14 +29,14 @@ type client struct {
 }
 
 func NewClient(kubeconfig, contextName string) (Client, error) {
-	cfg, err := kubeRESTConfig(kubeconfig, contextName)
+	cfg, err := RESTConfig(kubeconfig, contextName)
 	if err != nil {
 		return nil, err
 	}
 	return newClientFromRESTConfig(cfg)
 }
 
-func kubeRESTConfig(kubeconfig, contextName string) (*rest.Config, error) {
+func RESTConfig(kubeconfig, contextName string) (*rest.Config, error) {
 	cfg, err := rest.InClusterConfig()
 	if err != nil || kubeconfig != "" || contextName != "" {
 		path := platform.KubeconfigPath(kubeconfig)

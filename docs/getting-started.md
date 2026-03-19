@@ -49,8 +49,13 @@ For agent or automation use, prefer `--json-summary`. It prints a stable JSON su
 - [`configs/run.orbstack.docker.sample.yaml`](../configs/run.orbstack.docker.sample.yaml): Docker backend on OrbStack
 - [`configs/run.orbstack.machine.sample.yaml`](../configs/run.orbstack.machine.sample.yaml): OrbStack machine backend
 - [`configs/run.orbstack.k8s.sample.yaml`](../configs/run.orbstack.k8s.sample.yaml): K8s backend on OrbStack
+- [`configs/run.k8s.minikube.sample.yaml`](../configs/run.k8s.minikube.sample.yaml): K8s backend on Minikube
+- [`configs/run.k8s.k3s.sample.yaml`](../configs/run.k8s.k3s.sample.yaml): K8s backend on K3s
+- [`configs/run.k8s.microk8s.sample.yaml`](../configs/run.k8s.microk8s.sample.yaml): K8s backend on MicroK8s
 - [`configs/run.opensandbox.sample.yaml`](../configs/run.opensandbox.sample.yaml): OpenSandbox default runtime
 - [`configs/run.opensandbox.kata.sample.yaml`](../configs/run.opensandbox.kata.sample.yaml): OpenSandbox runtime-profile negotiation
+
+For `k8s` samples, `execution.provider` names the cluster flavor while `k8s.provider` keeps the legacy bridge value that existing render and submit commands still consume. These samples target the current K8s flow: `validate`, `k8s render-job`, and `k8s submit-job`.
 
 ## Language Samples
 

@@ -31,6 +31,24 @@ func TestValidateCompatibility(t *testing.T) {
 			level: model.SupportConditional,
 		},
 		{
+			name: "supported k8s k3s default",
+			cfg: model.ExecutionConfig{
+				Backend:        model.ExecutionBackendK8s,
+				Provider:       model.ProviderK3s,
+				RuntimeProfile: model.ExecutionRuntimeProfileDefault,
+			},
+			level: model.SupportSupported,
+		},
+		{
+			name: "conditional k8s microk8s gvisor",
+			cfg: model.ExecutionConfig{
+				Backend:        model.ExecutionBackendK8s,
+				Provider:       model.ProviderMicroK8s,
+				RuntimeProfile: model.ExecutionRuntimeProfileGVisor,
+			},
+			level: model.SupportConditional,
+		},
+		{
 			name: "unsupported direct gke kata",
 			cfg: model.ExecutionConfig{
 				Backend:        model.ExecutionBackendDirect,
