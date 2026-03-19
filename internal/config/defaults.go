@@ -93,8 +93,9 @@ func DefaultRunConfig() model.RunConfig {
 			Context:       "default",
 		},
 		K8s: model.K8sConfig{
-			Provider:  model.K8sProviderRemote,
-			Namespace: "ai-sandbox-runner-runs",
+			Provider:           model.K8sProviderRemote,
+			Namespace:          "ai-sandbox-runner-runs",
+			ServiceAccountName: "default",
 		},
 		AppleContainer: model.AppleContainerConfig{
 			Enabled:          false,

@@ -89,6 +89,8 @@ const (
 	ProviderOrbStack      ProviderKind = "orbstack"
 	ProviderKindKind      ProviderKind = "kind"
 	ProviderMinikube      ProviderKind = "minikube"
+	ProviderK3s           ProviderKind = "k3s"
+	ProviderMicroK8s      ProviderKind = "microk8s"
 	ProviderDockerDesktop ProviderKind = "docker-desktop"
 	ProviderColima        ProviderKind = "colima"
 	ProviderGKE           ProviderKind = "gke"
@@ -126,6 +128,9 @@ type K8sProvider string
 const (
 	K8sProviderRemote        K8sProvider = "remote"
 	K8sProviderOrbStackLocal K8sProvider = "orbstack-local"
+	K8sProviderMinikube      K8sProvider = "minikube"
+	K8sProviderK3s           K8sProvider = "k3s"
+	K8sProviderMicroK8s      K8sProvider = "microk8s"
 )
 
 type ContainerExecutionMode string
@@ -310,7 +315,8 @@ type BackendConfig struct {
 }
 
 type RuntimeConfig struct {
-	Profile RuntimeProfile `yaml:"profile" json:"profile"`
+	Profile   RuntimeProfile `yaml:"profile" json:"profile"`
+	ClassName string         `yaml:"class_name,omitempty" json:"class_name,omitempty"`
 }
 
 type ExecutionConfig struct {
@@ -350,10 +356,11 @@ type DockerConfig struct {
 }
 
 type K8sConfig struct {
-	Provider   K8sProvider `yaml:"provider" json:"provider"`
-	Kubeconfig string      `yaml:"kubeconfig,omitempty" json:"kubeconfig,omitempty"`
-	Context    string      `yaml:"context,omitempty" json:"context,omitempty"`
-	Namespace  string      `yaml:"namespace,omitempty" json:"namespace,omitempty"`
+	Provider           K8sProvider `yaml:"provider" json:"provider"`
+	Kubeconfig         string      `yaml:"kubeconfig,omitempty" json:"kubeconfig,omitempty"`
+	Context            string      `yaml:"context,omitempty" json:"context,omitempty"`
+	Namespace          string      `yaml:"namespace,omitempty" json:"namespace,omitempty"`
+	ServiceAccountName string      `yaml:"service_account_name,omitempty" json:"service_account_name,omitempty"`
 }
 
 type AppleContainerConfig struct {

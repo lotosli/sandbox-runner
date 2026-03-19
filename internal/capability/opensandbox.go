@@ -105,9 +105,9 @@ func probeOpenSandboxRuntimeProfile(ctx context.Context, client *osclient.Client
 	if workspaceRoot := strings.TrimSpace(fullConfig.OpenSandbox.WorkspaceRoot); workspaceRoot != "" {
 		createReq.Extensions["workspace_dir"] = workspaceRoot
 	}
-	if cfg.RuntimeProfile == model.ExecutionRuntimeProfileKata && strings.TrimSpace(fullConfig.Kata.RuntimeClassName) != "" {
-		createReq.Metadata["runtime.class"] = fullConfig.Kata.RuntimeClassName
-		createReq.Extensions["runtime.class"] = fullConfig.Kata.RuntimeClassName
+	if runtimeClass := model.RuntimeClassNameForConfig(fullConfig); runtimeClass != "" {
+		createReq.Metadata["runtime.class"] = runtimeClass
+		createReq.Extensions["runtime.class"] = runtimeClass
 	}
 
 	info, err := client.CreateSandbox(ctx, createReq)

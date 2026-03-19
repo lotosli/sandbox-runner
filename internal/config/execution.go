@@ -6,6 +6,7 @@ func normalizeExecutionConfig(cfg model.RunConfig) model.RunConfig {
 	if cfg.Execution.Backend == "" {
 		cfg.Execution = deriveExecutionConfig(cfg)
 	} else {
+		cfg.Execution.RuntimeProfile = model.NormalizeExecutionRuntimeProfile(cfg.Execution.RuntimeProfile)
 		if cfg.Execution.Provider == "" {
 			cfg.Execution.Provider = defaultProviderForBackend(cfg.Execution.Backend)
 		}
@@ -19,7 +20,7 @@ func normalizeExecutionConfig(cfg model.RunConfig) model.RunConfig {
 func deriveExecutionConfig(cfg model.RunConfig) model.ExecutionConfig {
 	backend := executionBackendFromLegacy(cfg)
 	provider := executionProviderFromLegacy(cfg, backend)
-	runtimeProfile := executionRuntimeProfileFromLegacy(cfg)
+	runtimeProfile := model.NormalizeExecutionRuntimeProfile(executionRuntimeProfileFromLegacy(cfg))
 	if provider == "" {
 		provider = defaultProviderForBackend(backend)
 	}
@@ -57,11 +58,7 @@ func applyExecutionConfig(cfg model.RunConfig) model.RunConfig {
 			cfg.Docker.Provider = model.DockerProviderDocker
 		}
 	case model.ExecutionBackendK8s:
-		if execCfg.Provider == model.ProviderOrbStack {
-			cfg.K8s.Provider = model.K8sProviderOrbStackLocal
-		} else if cfg.K8s.Provider == "" {
-			cfg.K8s.Provider = model.K8sProviderRemote
-		}
+		cfg.K8s.Provider = model.LegacyK8sProviderForExecutionProvider(execCfg.Provider)
 	}
 
 	return cfg
@@ -106,10 +103,7 @@ func executionProviderFromLegacy(cfg model.RunConfig, backend model.ExecutionBac
 		}
 		return model.ProviderNative
 	case model.ExecutionBackendK8s:
-		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
-			return model.ProviderOrbStack
-		}
-		return model.ProviderNative
+		return model.ExecutionProviderForK8sProvider(cfg.K8s.Provider)
 	case model.ExecutionBackendOpenSandbox:
 		return model.ProviderOpenSandbox
 	case model.ExecutionBackendMachine:

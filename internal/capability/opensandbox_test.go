@@ -154,6 +154,84 @@ func TestProbeOpenSandboxConditionalRuntimeUsesLiveProviderProbe(t *testing.T) {
 	}
 }
 
+func TestProbeOpenSandboxFirecrackerUsesConfiguredRuntimeClass(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/health":
+			_ = json.NewEncoder(w).Encode(map[string]any{"status": "healthy"})
+		case r.Method == http.MethodGet && r.URL.Path == "/openapi.json":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"openapi": "3.1.0",
+				"info": map[string]any{
+					"title":   "OpenSandbox Lifecycle API",
+					"version": "0.1.0",
+				},
+			})
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/sandboxes":
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"items": []any{},
+				"pagination": map[string]any{
+					"page":        1,
+					"pageSize":    1,
+					"totalItems":  0,
+					"totalPages":  0,
+					"hasNextPage": false,
+				},
+			})
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/sandboxes":
+			var payload map[string]any
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatalf("Decode() error = %v", err)
+			}
+			metadata := payload["metadata"].(map[string]any)
+			if metadata["runtime.profile"] != "firecracker" {
+				t.Fatalf("metadata runtime.profile = %v, want firecracker", metadata["runtime.profile"])
+			}
+			if metadata["runtime.class"] != "sandbox-runner-microvm" {
+				t.Fatalf("metadata runtime.class = %v, want sandbox-runner-microvm", metadata["runtime.class"])
+			}
+			extensions := payload["extensions"].(map[string]any)
+			if extensions["runtime.profile"] != "firecracker" {
+				t.Fatalf("extensions runtime.profile = %v, want firecracker", extensions["runtime.profile"])
+			}
+			if extensions["runtime.class"] != "sandbox-runner-microvm" {
+				t.Fatalf("extensions runtime.class = %v, want sandbox-runner-microvm", extensions["runtime.class"])
+			}
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "sbx-firecracker",
+				"status": map[string]any{
+					"state": "running",
+				},
+			})
+		case r.Method == http.MethodDelete && r.URL.Path == "/v1/sandboxes/sbx-firecracker":
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultRunConfig()
+	cfg.Execution = model.ExecutionConfig{
+		Backend:        model.ExecutionBackendOpenSandbox,
+		Provider:       model.ProviderOpenSandbox,
+		RuntimeProfile: model.ExecutionRuntimeProfileFirecracker,
+	}
+	cfg.OpenSandbox.BaseURL = server.URL
+	cfg.OpenSandbox.Runtime = model.OpenSandboxRuntimeKubernetes
+	cfg.Runtime.Profile = model.RuntimeProfileFirecracker
+	cfg.Runtime.ClassName = "sandbox-runner-microvm"
+	cfg.Run.Image = "alpine:3.20"
+
+	result, err := Probe(context.Background(), cfg.Execution, cfg)
+	if err != nil {
+		t.Fatalf("Probe() error = %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("Probe() OK = false, want true")
+	}
+}
+
 func TestProbeOpenSandboxConditionalRuntimeMapsProviderRuntimeRejection(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {

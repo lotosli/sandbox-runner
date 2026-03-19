@@ -103,3 +103,21 @@ func TestValidateRunConfigAllowsOrbStackProfiles(t *testing.T) {
 		t.Fatalf("ValidateRunConfig(k8sCfg) error = %v", err)
 	}
 }
+
+func TestValidateRunConfigAllowsMicroVMAliasForK8s(t *testing.T) {
+	cfg := DefaultRunConfig()
+	cfg.Platform.RunMode = model.RunModeSTGLinux
+	cfg.Backend.Kind = model.BackendKindK8s
+	cfg.Execution = model.ExecutionConfig{
+		Backend:        model.ExecutionBackendK8s,
+		Provider:       model.ProviderK3s,
+		RuntimeProfile: model.ExecutionRuntimeProfile("microvm"),
+	}
+	cfg.K8s.Provider = model.K8sProviderK3s
+	cfg.Runtime.Profile = model.RuntimeProfile("microvm")
+	cfg.Runtime.ClassName = "sandbox-runner-microvm"
+
+	if err := ValidateRunConfig(cfg); err != nil {
+		t.Fatalf("ValidateRunConfig() error = %v", err)
+	}
+}

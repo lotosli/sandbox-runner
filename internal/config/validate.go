@@ -10,6 +10,8 @@ import (
 
 func ValidateRunConfig(cfg model.RunConfig) error {
 	cfg = normalizeExecutionConfig(cfg)
+	cfg.Execution.RuntimeProfile = model.NormalizeExecutionRuntimeProfile(cfg.Execution.RuntimeProfile)
+	cfg.Runtime.Profile = model.NormalizeRuntimeProfile(cfg.Runtime.Profile)
 	if cfg.Run.ServiceName == "" {
 		return invalidSchema("run.service_name is required")
 	}
@@ -40,7 +42,7 @@ func ValidateRunConfig(cfg model.RunConfig) error {
 		return invalidSchema("execution.provider is required")
 	}
 	switch cfg.Execution.Provider {
-	case model.ProviderNative, model.ProviderOrbStack, model.ProviderKindKind, model.ProviderMinikube, model.ProviderDockerDesktop, model.ProviderColima, model.ProviderGKE, model.ProviderEKS, model.ProviderAKS, model.ProviderOpenSandbox:
+	case model.ProviderNative, model.ProviderOrbStack, model.ProviderKindKind, model.ProviderMinikube, model.ProviderK3s, model.ProviderMicroK8s, model.ProviderDockerDesktop, model.ProviderColima, model.ProviderGKE, model.ProviderEKS, model.ProviderAKS, model.ProviderOpenSandbox:
 	default:
 		return invalidSchema(fmt.Sprintf("unsupported execution.provider: %s", cfg.Execution.Provider))
 	}
@@ -134,7 +136,7 @@ func ValidateRunConfig(cfg model.RunConfig) error {
 	}
 	if cfg.Backend.Kind == model.BackendKindK8s {
 		switch cfg.K8s.Provider {
-		case model.K8sProviderRemote, model.K8sProviderOrbStackLocal:
+		case model.K8sProviderRemote, model.K8sProviderOrbStackLocal, model.K8sProviderMinikube, model.K8sProviderK3s, model.K8sProviderMicroK8s:
 		default:
 			return invalidSchema(fmt.Sprintf("unsupported k8s.provider: %s", cfg.K8s.Provider))
 		}
@@ -201,10 +203,10 @@ func validateBackendRunMode(cfg model.RunConfig) error {
 }
 
 func validateExecutionRuntime(cfg model.RunConfig) error {
-	if cfg.Execution.RuntimeProfile == model.ExecutionRuntimeProfileKata && (cfg.Execution.Backend == model.ExecutionBackendK8s || cfg.Execution.Backend == model.ExecutionBackendOpenSandbox) && cfg.Kata.RuntimeClassName == "" {
+	if model.RequiresRuntimeClass(cfg.Execution.RuntimeProfile) && requiresRuntimeClassForBackend(cfg) && model.RuntimeClassNameForConfig(cfg) == "" {
 		return model.RunnerError{
 			Code:        string(model.ErrorCodeKataRuntimeClassNotFound),
-			Message:     "kata.runtime_class_name is required when execution.runtime_profile=kata",
+			Message:     fmt.Sprintf("runtime.class_name is required when execution.runtime_profile=%s", cfg.Execution.RuntimeProfile),
 			BackendKind: string(cfg.Execution.Backend),
 		}
 	}
@@ -223,6 +225,17 @@ func validateExecutionRuntime(cfg model.RunConfig) error {
 		}
 	}
 	return nil
+}
+
+func requiresRuntimeClassForBackend(cfg model.RunConfig) bool {
+	switch cfg.Execution.Backend {
+	case model.ExecutionBackendK8s:
+		return true
+	case model.ExecutionBackendOpenSandbox:
+		return cfg.OpenSandbox.Runtime == model.OpenSandboxRuntimeKubernetes
+	default:
+		return false
+	}
 }
 
 func invalidSchema(message string) error {

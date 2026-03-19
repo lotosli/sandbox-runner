@@ -179,6 +179,24 @@ func TestResolveFeaturesEnablesLinuxSTGOptionsWhenSupported(t *testing.T) {
 	}
 }
 
+func TestProviderHelpersReportNamedK8sProvider(t *testing.T) {
+	cfg := config.DefaultRunConfig()
+	cfg.Platform.RunMode = model.RunModeSTGLinux
+	cfg.Backend.Kind = model.BackendKindK8s
+	cfg.Execution = model.ExecutionConfig{
+		Backend:        model.ExecutionBackendK8s,
+		Provider:       model.ProviderMinikube,
+		RuntimeProfile: model.ExecutionRuntimeProfileDefault,
+	}
+	cfg.K8s.Provider = model.K8sProviderMinikube
+	if got := providerName(cfg); got != "minikube" {
+		t.Fatalf("providerName() = %q, want minikube", got)
+	}
+	if got := backendProvider(cfg); got != "minikube" {
+		t.Fatalf("backendProvider() = %q, want minikube", got)
+	}
+}
+
 func TestParseLinuxCapabilities(t *testing.T) {
 	caps, err := parseLinuxCapabilities("000000c000000000")
 	if err != nil {

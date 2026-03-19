@@ -106,10 +106,10 @@ func ResolveFeatures(cfg model.RunConfig, target model.ExecutionTarget) (model.F
 		target.MachineName = cfg.OrbStack.MachineName
 	} else if cfg.Backend.Kind == model.BackendKindDocker && cfg.Docker.Provider == model.DockerProviderOrbStack {
 		target.LocalPlatform = "orbstack"
-	} else if cfg.Backend.Kind == model.BackendKindK8s && cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
-		target.LocalPlatform = "orbstack"
+	} else if cfg.Backend.Kind == model.BackendKindK8s {
+		target.LocalPlatform = model.K8sLocalPlatform(cfg.K8s.Provider)
 	}
-	target.RuntimeClassName = cfg.Kata.RuntimeClassName
+	target.RuntimeClassName = model.RuntimeClassNameForConfig(cfg)
 	target.Virtualization = virtualizationForProfile(cfg.Runtime.Profile)
 	return features, warnings, nil
 }
@@ -267,6 +267,19 @@ func providerName(cfg model.RunConfig) string {
 		return "opensandbox"
 	case model.BackendKindDevContainer:
 		return "devcontainer"
+	case model.BackendKindAppleContainer:
+		return "native"
+	case model.BackendKindDocker:
+		if cfg.Docker.Provider == model.DockerProviderOrbStack {
+			return "orbstack"
+		}
+		return "native"
+	case model.BackendKindK8s:
+		return string(model.ExecutionProviderForK8sProvider(cfg.K8s.Provider))
+	case model.BackendKindOrbStackMachine:
+		return "orbstack"
+	case model.BackendKindDirect:
+		return "native"
 	default:
 		return string(cfg.Backend.Kind)
 	}
@@ -285,10 +298,7 @@ func backendProvider(cfg model.RunConfig) string {
 		}
 		return "native"
 	case model.BackendKindK8s:
-		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
-			return "orbstack"
-		}
-		return "native"
+		return string(model.ExecutionProviderForK8sProvider(cfg.K8s.Provider))
 	case model.BackendKindOrbStackMachine:
 		return "orbstack"
 	default:
@@ -300,6 +310,10 @@ func virtualizationForProfile(profile model.RuntimeProfile) string {
 	switch profile {
 	case model.RuntimeProfileKata:
 		return "kata"
+	case model.RuntimeProfileGVisor:
+		return "gvisor"
+	case model.RuntimeProfileFirecracker:
+		return "firecracker"
 	case model.RuntimeProfileAppleContainer:
 		return "apple-container"
 	case model.RuntimeProfileOrbStackMachine:

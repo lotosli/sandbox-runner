@@ -1,0 +1,49 @@
+run:
+  service_name: sandbox-runner-k3s-k8s-demo
+  mode: stg
+  run_id: ""
+  attempt: 1
+  sandbox_id: stg-k3s-k8s
+  workspace_dir: ..
+  artifact_dir: ../.sandbox-runner
+  otlp_endpoint: http://127.0.0.1:4318
+  deployment_environment: local
+  command:
+    - go
+    - test
+    - ./...
+  language: auto
+  image: ghcr.io/lotosli/sandbox-runner:latest
+
+execution:
+  backend: k8s
+  provider: k3s
+  runtime_profile: default
+
+backend:
+  kind: k8s
+
+runtime:
+  profile: native
+
+platform:
+  target_os: auto
+  target_arch: auto
+  run_mode: stg_linux
+  container_execution_mode: host-runner
+  feature_gates:
+    go_basic_runner: true
+    go_manual_sdk: true
+    go_autosdk_bridge: false
+    obi_ebpf: false
+    k8s_operator_go_inject: false
+    local_docker_mode: false
+    local_direct_mode: false
+    stg_linux_mode: true
+    local_apple_container_mode: false
+    local_orbstack_machine_mode: false
+
+k8s:
+  provider: k3s
+  kubeconfig: ~/.kube/config
+  namespace: ai-sandbox-runner-runs

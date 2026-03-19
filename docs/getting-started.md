@@ -49,8 +49,25 @@ For agent or automation use, prefer `--json-summary`. It prints a stable JSON su
 - [`configs/run.orbstack.docker.sample.yaml`](../configs/run.orbstack.docker.sample.yaml): Docker backend on OrbStack
 - [`configs/run.orbstack.machine.sample.yaml`](../configs/run.orbstack.machine.sample.yaml): OrbStack machine backend
 - [`configs/run.orbstack.k8s.sample.yaml`](../configs/run.orbstack.k8s.sample.yaml): K8s backend on OrbStack
+- [`configs/run.k8s.minikube.sample.yaml`](../configs/run.k8s.minikube.sample.yaml): K8s backend on Minikube
+- [`configs/run.k8s.k3s.sample.yaml`](../configs/run.k8s.k3s.sample.yaml): K8s backend on K3s
+- [`configs/run.k8s.microk8s.sample.yaml`](../configs/run.k8s.microk8s.sample.yaml): K8s backend on MicroK8s
+- [`configs/run.k8s.minikube.microvm.sample.yaml`](../configs/run.k8s.minikube.microvm.sample.yaml): Minikube microvm or firecracker smoke sample
+- [`configs/run.k8s.k3s.microvm.sample.yaml`](../configs/run.k8s.k3s.microvm.sample.yaml): K3s microvm or firecracker smoke sample
+- [`configs/run.k8s.microk8s.microvm.sample.yaml`](../configs/run.k8s.microk8s.microvm.sample.yaml): MicroK8s microvm or firecracker smoke sample
 - [`configs/run.opensandbox.sample.yaml`](../configs/run.opensandbox.sample.yaml): OpenSandbox default runtime
 - [`configs/run.opensandbox.kata.sample.yaml`](../configs/run.opensandbox.kata.sample.yaml): OpenSandbox runtime-profile negotiation
+
+For `k8s` samples, `execution.provider` names the cluster flavor while `k8s.provider` keeps the legacy bridge value that existing render and submit commands still consume. `runtime.class_name` is the generic runtime-class hook for conditional profiles such as `kata` and `microvm`. These samples target the current K8s flow: `validate`, `k8s render-job`, and `k8s submit-job`.
+
+Example `microvm` smoke run on a local K8s provider:
+
+```bash
+./sandbox-runner validate --config configs/run.k8s.k3s.microvm.sample.yaml --policy configs/policy.sample.yaml
+./sandbox-runner k8s submit-job --config configs/run.k8s.k3s.microvm.sample.yaml --policy configs/policy.sample.yaml
+kubectl --context k3d-k3s -n ai-sandbox-runner-runs wait --for=condition=complete job -l app=sandbox-runner --timeout=120s
+kubectl --context k3d-k3s -n ai-sandbox-runner-runs logs job/$(kubectl --context k3d-k3s -n ai-sandbox-runner-runs get jobs -l app=sandbox-runner -o jsonpath='{.items[-1:].metadata.name}')
+```
 
 ## Language Samples
 

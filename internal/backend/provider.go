@@ -15,10 +15,7 @@ func backendProviderForConfig(cfg model.RunConfig) string {
 		}
 		return "native"
 	case model.BackendKindK8s:
-		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
-			return "orbstack"
-		}
-		return "native"
+		return string(model.ExecutionProviderForK8sProvider(cfg.K8s.Provider))
 	case model.BackendKindOpenSandbox:
 		return "opensandbox"
 	case model.BackendKindDevContainer, model.BackendKindAppleContainer:

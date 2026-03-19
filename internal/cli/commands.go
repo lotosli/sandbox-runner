@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/lotosli/sandbox-runner/internal/artifact"
 	"github.com/lotosli/sandbox-runner/internal/kubernetes"
@@ -129,6 +130,7 @@ func (c *K8sRenderCommand) Run(ctx context.Context) (int, error) {
 	if err != nil {
 		return 1, err
 	}
+	req = ensureK8sRequestIdentity(req)
 	builder := sdk.NewJobSpecBuilder()
 	spec, err := builder.Build(req, c.Namespace)
 	if err != nil {
@@ -154,8 +156,13 @@ func (c *K8sSubmitCommand) Run(ctx context.Context) (int, error) {
 	if err != nil {
 		return 1, err
 	}
+	req = ensureK8sRequestIdentity(req)
 	builder := sdk.NewJobSpecBuilder()
 	spec, err := builder.Build(req, c.Namespace)
+	if err != nil {
+		return 1, err
+	}
+	configMap, err := kubernetes.BuildConfigMap(req, c.Namespace)
 	if err != nil {
 		return 1, err
 	}
@@ -169,6 +176,9 @@ func (c *K8sSubmitCommand) Run(ctx context.Context) (int, error) {
 	}
 	submitter, err := sdk.NewSubmitter(kubeconfig, contextName, req.RunConfig.K8s.Provider)
 	if err != nil {
+		return 1, err
+	}
+	if _, err := submitter.ApplyConfigMap(ctx, configMap); err != nil {
 		return 1, err
 	}
 	result, err := submitter.SubmitJob(ctx, spec)
@@ -367,6 +377,13 @@ func runSummaryFiles(artifactDir string) map[string]string {
 		"stderr":   filepath.Join(artifactDir, artifact.StderrFileName),
 		"context":  artifactContextPath(artifactDir),
 	}
+}
+
+func ensureK8sRequestIdentity(req model.RunRequest) model.RunRequest {
+	if strings.TrimSpace(req.RunConfig.Run.RunID) == "" {
+		req.RunConfig.Run.RunID = fmt.Sprintf("r-%s", time.Now().UTC().Format("20060102-150405"))
+	}
+	return req
 }
 
 func suggestedReadOrder(files map[string]string) []string {

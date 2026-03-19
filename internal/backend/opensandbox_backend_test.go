@@ -195,6 +195,72 @@ func TestOpenSandboxBackendCreatePropagatesKataRuntimeMetadata(t *testing.T) {
 	}
 }
 
+func TestOpenSandboxBackendCreatePropagatesFirecrackerRuntimeMetadata(t *testing.T) {
+	var payload map[string]any
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Path != "/v1/sandboxes" {
+			http.NotFound(w, r)
+			return
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("Decode() error = %v", err)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "sbx-firecracker",
+			"status": map[string]any{
+				"state": "running",
+			},
+			"metadata": map[string]string{
+				"runtime.profile": "firecracker",
+				"runtime.class":   "sandbox-runner-microvm",
+			},
+		})
+	}))
+	defer server.Close()
+
+	cfg := config.DefaultRunConfig()
+	cfg.Backend.Kind = model.BackendKindOpenSandbox
+	cfg.Platform.RunMode = model.RunModeSTGOpenSandboxK8s
+	cfg.OpenSandbox.BaseURL = server.URL
+	cfg.OpenSandbox.Runtime = model.OpenSandboxRuntimeKubernetes
+	cfg.Runtime.Profile = model.RuntimeProfileFirecracker
+	cfg.Runtime.ClassName = "sandbox-runner-microvm"
+
+	backend := NewOpenSandboxBackend(cfg)
+	_, err := backend.Create(context.Background(), CreateSandboxRequest{
+		RunID:    "run-firecracker",
+		Attempt:  1,
+		Image:    "alpine:3.20",
+		Metadata: map[string]string{"run_id": "run-firecracker"},
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	metadata, ok := payload["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("metadata = %#v, want map", payload["metadata"])
+	}
+	if metadata["runtime.profile"] != "firecracker" {
+		t.Fatalf("runtime.profile = %v, want firecracker", metadata["runtime.profile"])
+	}
+	if metadata["runtime.class"] != "sandbox-runner-microvm" {
+		t.Fatalf("runtime.class = %v, want sandbox-runner-microvm", metadata["runtime.class"])
+	}
+
+	extensions, ok := payload["extensions"].(map[string]any)
+	if !ok {
+		t.Fatalf("extensions = %#v, want map", payload["extensions"])
+	}
+	if extensions["runtime.profile"] != "firecracker" {
+		t.Fatalf("extensions runtime.profile = %v, want firecracker", extensions["runtime.profile"])
+	}
+	if extensions["runtime.class"] != "sandbox-runner-microvm" {
+		t.Fatalf("extensions runtime.class = %v, want sandbox-runner-microvm", extensions["runtime.class"])
+	}
+}
+
 func TestOpenSandboxBackendCreateExpandsDefaultShellEntrypointToKeepAlive(t *testing.T) {
 	var payload map[string]any
 

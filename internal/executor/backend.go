@@ -239,7 +239,7 @@ func providerName(cfg model.RunConfig) string {
 	if cfg.Execution.Provider != "" {
 		return string(cfg.Execution.Provider)
 	}
-	return string(cfg.Backend.Kind)
+	return backendProviderName(cfg)
 }
 
 func backendProviderName(cfg model.RunConfig) string {
@@ -253,10 +253,7 @@ func backendProviderName(cfg model.RunConfig) string {
 		}
 		return "native"
 	case model.BackendKindK8s:
-		if cfg.K8s.Provider == model.K8sProviderOrbStackLocal {
-			return "orbstack"
-		}
-		return "native"
+		return string(model.ExecutionProviderForK8sProvider(cfg.K8s.Provider))
 	case model.BackendKindOrbStackMachine:
 		return "orbstack"
 	case model.BackendKindDirect:

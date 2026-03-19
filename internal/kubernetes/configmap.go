@@ -12,7 +12,12 @@ import (
 )
 
 func BuildConfigMap(req model.RunRequest, namespace string) (*corev1.ConfigMap, error) {
-	runYAML, err := yaml.Marshal(req.RunConfig)
+	cfg := req.RunConfig
+	if cfg.Execution.Backend == model.ExecutionBackendK8s || cfg.Backend.Kind == model.BackendKindK8s {
+		cfg.K8s.Kubeconfig = ""
+		cfg.K8s.Context = ""
+	}
+	runYAML, err := yaml.Marshal(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -23,7 +28,7 @@ func BuildConfigMap(req model.RunRequest, namespace string) (*corev1.ConfigMap, 
 	return &corev1.ConfigMap{
 		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      "sandbox-runner-config",
+			Name:      configMapName(req.RunConfig.Run.RunID),
 			Namespace: namespace,
 		},
 		Data: map[string]string{
@@ -66,4 +71,11 @@ func resourceParse(value string) (resource.Quantity, error) {
 		return resource.Quantity{}, fmt.Errorf("parse quantity %s: %w", value, err)
 	}
 	return q, nil
+}
+
+func configMapName(runID string) string {
+	if runID == "" {
+		return "sandbox-runner-config"
+	}
+	return "sandbox-runner-config-" + runID
 }
